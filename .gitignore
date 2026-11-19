@@ -1,0 +1,54 @@
+# ROS / catkin build outputs
+build/
+build_rebuild/
+devel/
+install/
+log/
+logs/
+
+# CMake build outputs
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Runtime and editor artifacts
+*.log
+*.bag
+*.bag.active
+/system/bags/
+slam/src/FAST_LIO/Log/*.txt
+*.pyc
+__pycache__/
+.cache/
+.runtime/
+.idea/
+.vscode/
+*~
+
+# Generated or recorded map data
+*.pcd
+
+# Native build artifacts
+*.o
+*.so
+*.a
+*.out
+
+# Retained native mapping dependency; these libraries are intentionally shipped.
+!third_party/gtsam/lib/*.so
+!third_party/gtsam/lib/*.so.*
+!third_party/gtsam/lib/*.a
+
+# Build provenance lock is runtime state, never source.
+.scan_build.lock
+
+.pytest_cache/
+
+# Reproducible simulation outputs and simulation-only learned weights.
+simulation/artifacts/
+
+# Site-specific trajectory and recording outputs.
+*.tum
+*_elevator_debug.csv
+/system/map/*.pgm

@@ -1,0 +1,16 @@
+# Width reported by the user as approximately 0.35 m on 2026-10-28.
+# Length remains nominal; the complete payload/gait envelope is not calibrated.
+# Measure payload protrusions and the normal gait envelope before tight passages.
+length: 0.70
+width: 0.35
+# Shape center relative to the body reference (payload/gait measurement).
+center_x: 0.0
+center_y: 0.0
+# Planning odometry/path already use the body XY centre. The input sensor
+# lever arm is applied once by reference_path_transform, never by this hull.
+reference_offset_x: 0.0
+reference_offset_y: 0.0
+clearance: 0.03
+# These dimensions constrain static prior support only. Dynamic obstacles use
+# native SCAN double-cylinder radius/offset and vertical inflation parameters.
+geometry_verified: false

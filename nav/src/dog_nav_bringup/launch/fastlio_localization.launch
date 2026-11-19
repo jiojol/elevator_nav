@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="globalmap_pcd" default="$(find dog_nav_bringup)/../../../system/map/dog.pcd"/>
+  <arg name="start_lidar" default="true"/>
+  <arg name="use_calibrated_mount" default="false"/>
+  <include file="$(find dog_nav_bringup)/launch/lidar.launch" if="$(arg start_lidar)">
+    <arg name="xfer_format" value="1"/>
+    <arg name="use_calibrated_mount" value="$(arg use_calibrated_mount)"/>
+  </include>
+
+  <group ns="fastlio_nav">
+    <!-- Share mapping's IMU/LiDAR calibration and gravity alignment exactly. -->
+    <rosparam command="load" file="$(find dog_nav_bringup)/../../../slam/src/FAST_LIO/config/mid360.yaml"/>
+    <param name="pcd_save/pcd_save_en" value="false"/>
+    <param name="odom/use_wheel_odom" value="false"/>
+    <param name="publish/path_en" value="false"/>
+    <param name="publish/scan_publish_en" value="true"/>
+    <param name="publish/scan_bodyframe_pub_en" value="true"/>
+    <param name="publish/dense_publish_en" value="false"/>
+    <param name="filter_size_surf" value="0.3"/>
+    <param name="filter_size_map" value="0.3"/>
+    <param name="cube_side_length" value="1000.0"/>
+    <param name="runtime_pos_log_enable" value="false"/>
+    <!-- Bound scan backlog and publish synchronized LIO inputs before map maintenance. -->
+    <param name="navigation_low_latency" value="true"/>
+    <node pkg="dog_nav_bringup" type="fastlio_nav.py" name="laserMapping" output="screen" required="true">
+      <remap from="/Odometry" to="/fastlio_nav/odometry"/>
+      <remap from="/cloud_registered_body" to="/fastlio_nav/cloud_body"/>
+      <remap from="/cloud_registered" to="/fastlio_nav/cloud_local"/>
+      <remap from="/cloud_effected" to="/fastlio_nav/cloud_effected"/>
+      <remap from="/Laser_map" to="/fastlio_nav/local_map"/>
+      <remap from="/path" to="/fastlio_nav/path"/>
+      <!-- The adapter owns map->fastlio_odom->base_link; isolate raw LIO TF. -->
+      <remap from="/tf" to="/fastlio_nav/internal_tf"/>
+    </node>
+  </group>
+
+  <node pkg="dog_nav_bringup" type="fastlio_map_localizer" name="fastlio_map_localizer" output="screen" required="true">
+    <rosparam command="load" file="$(find dog_nav_bringup)/config/fastlio_localization.yaml"/>
+    <param name="globalmap_pcd" value="$(arg globalmap_pcd)"/>
+  </node>
+</launch>

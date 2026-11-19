@@ -1,0 +1,21 @@
+{
+  "gtsam": {
+    "version": "4.1.1",
+    "architecture": "aarch64",
+    "origin": "retained native install prefix from the retired PCT bundle",
+    "licenses": [
+      "gtsam/LICENSE",
+      "gtsam/LICENSE.BSD"
+    ],
+    "used_by": "slam/src/fastlio"
+  },
+  "go2_geometry.urdf": {
+    "origin": "Go2 geometry previously supplied by SCAN simulator",
+    "used_by": [
+      "body-IMU calibration geometry reference",
+      "system/tests/test_lidar_mount_candidate.py"
+    ],
+    "runtime_navigation_model": false,
+    "contains": "physical geometry and IMU joint; simulation visuals/meshes omitted"
+  }
+}

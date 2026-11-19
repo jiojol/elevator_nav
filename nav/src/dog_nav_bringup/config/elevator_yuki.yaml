@@ -1,0 +1,14 @@
+# The recorded ride near y=-5.3 connects floor2 and floor1.
+# Ground poses estimated from the recorded ingress/egress and FREE voxels.
+elevator:
+  id: E1
+  configured: true
+  door_width: 1.0
+  door_height: 2.2
+  floors:
+    floor1:
+      lobby_pose: [6.50, -5.25, -33.27, 3.12]
+      inside_pose: [5.45, -5.27, -33.25, 3.12]
+    floor2:
+      lobby_pose: [6.25, -5.30, -11.16, -3.10]
+      inside_pose: [5.00, -5.35, -11.17, -3.10]

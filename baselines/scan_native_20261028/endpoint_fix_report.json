@@ -1,0 +1,17 @@
+{
+  "issue": "雷达参考点在最终转向中移动，旧固定雷达位置阈值误报失败；旧轨迹跟踪器未停用导致无进度误报",
+  "fixes": [
+    "末端路径按目标朝向补偿雷达与机身中心的水平偏移",
+    "位置校验统一比较机身中心，实际停稳后才开始/结束对向",
+    "位置到达事件停止旧轨迹跟踪",
+    "真实位置偏离先停车确认再调用现有同目标有界恢复，不直接FAILED"
+  ],
+  "verification": {
+    "clean_build": "passed",
+    "source_artifact_hashes": "verified",
+    "Python_syntax": "passed",
+    "original_maps": "unchanged",
+    "functional_replay_motion_tests": "not run"
+  },
+  "new_topic": "/planning/tracking_path"
+}

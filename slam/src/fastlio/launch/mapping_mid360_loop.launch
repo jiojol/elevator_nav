@@ -1,0 +1,28 @@
+<launch>
+  <arg name="rviz" default="true" />
+  <arg name="rviz_config" default="$(find fastlio)/rviz/mapping.rviz" />
+  <arg name="start_lidar" default="true" />
+  <arg name="pcd_save_path" default="$(find fastlio)/PCD/scans.pcd" />
+  <arg name="tum_path" default="" />
+  <arg name="config" default="$(find fastlio)/config/mapping_mid360_loop.yaml" />
+
+  <group if="$(arg start_lidar)">
+    <include file="$(find livox_ros_driver2)/launch_ROS1/msg_MID360s.launch">
+      <arg name="xfer_format" value="1" />
+    </include>
+  </group>
+
+  <!-- map_builder_node reads the global parameter server, not ~private params. -->
+  <rosparam command="load" file="$(arg config)" />
+  <param name="offline_mode" value="false" />
+  <param name="offline_save_map" value="true" />
+  <param name="offline_map_output" value="$(arg pcd_save_path)" />
+  <param name="offline_traj_output" value="$(arg tum_path)" />
+  <param name="lidar_type" value="livox_custom" />
+
+  <node pkg="fastlio" type="map_builder_node" name="map_builder_node" output="screen" />
+
+  <group if="$(arg rviz)">
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config)" />
+  </group>
+</launch>

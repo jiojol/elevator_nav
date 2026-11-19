@@ -1,0 +1,15 @@
+body_height: 0.40
+near_radius: 1.50
+cell_size: 0.10
+plane_thickness: 0.16
+closed_occupancy_ratio: 0.18
+open_occupancy_ratio: 0.06
+min_inside_points: 15
+open_hold_s: 0.60
+closed_hold_s: 0.40
+odom_timeout: 0.50
+require_tracking: true
+door_open_topic: /elevator/door_open
+door_status_topic: /elevator/door_status
+cloud_topic: /navigation/obstacle_points
+odom_topic: /dog_nav/odometry

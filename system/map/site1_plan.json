@@ -1,0 +1,17 @@
+{
+  "traj": "/home/nvidia/dog_nav_3d/system/map/site1.tum",
+  "free_pcd": "site1_free.pcd",
+  "path_tum": "site1_path.tum",
+  "resolution": 0.2,
+  "half_width": 1.0,
+  "pose_stride": 0.1,
+  "z_offset": -0.4,
+  "raw_then_resampled": [
+    1237,
+    356
+  ],
+  "path_length_m": 48.24140961732737,
+  "free_voxels": 1461,
+  "z_min": -1.129857,
+  "z_max": -0.365003
+}

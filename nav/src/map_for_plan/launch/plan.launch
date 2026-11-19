@@ -1,0 +1,36 @@
+<launch>
+  <arg name="meta" default="$(find dog_nav_bringup)/../../../system/map/dog_plan.json"/>
+  <arg name="floors_config" default="$(find dog_nav_bringup)/config/floors.yaml"/>
+  <arg name="elevator_config" default=""/>
+  <arg name="frame_id" default="map"/>
+  <arg name="snap_radius" default="2.0"/>
+  <arg name="max_step" default="0.80"/>
+  <arg name="center_weight" default="6.0"/>
+  <arg name="local_planner" default="modified"/>
+  <arg name="planning_only" default="false"/>
+  <arg name="manual_start" default="false"/>
+  <arg name="path_z_offset" default="0.10"/>
+  <arg name="body_height" default="0.40"/>
+  <arg name="loop_nav" default="false"/>
+  <arg name="loop_pause" default="0.5"/>
+  <arg name="mission_segment_only" default="false"/>
+
+  <node pkg="map_for_plan" type="visualize_plan_map.py" name="visualize_plan_map" output="screen"
+        args="--meta $(arg meta) --frame-id $(arg frame_id)"/>
+  <node pkg="map_for_plan" type="global_planner.py" name="global_planner" output="screen"
+        args="--meta $(arg meta) --frame-id $(arg frame_id) --snap-radius $(arg snap_radius) --max-step $(arg max_step) --center-weight $(arg center_weight)">
+    <rosparam command="load" file="$(arg floors_config)"/>
+    <rosparam command="load" file="$(arg elevator_config)" if="$(eval arg('elevator_config') != '')"/>
+    <param name="local_planner" value="$(arg local_planner)" type="str"/>
+    <param name="planning_only" value="$(arg planning_only)" type="bool"/>
+    <param name="manual_start" value="$(arg manual_start)" type="bool"/>
+    <param name="mission_segment_only" value="$(arg mission_segment_only)" type="bool"/>
+    <param name="loop_nav" value="$(arg loop_nav)" type="bool"/>
+    <param name="loop_pause" value="$(arg loop_pause)" type="double"/>
+    <param name="body_height" value="$(arg body_height)" type="double"/>
+    <param name="path_z_offset" value="$(arg path_z_offset)" type="double"/>
+    <!-- Preserve the currently accepted upstream reference heights. -->
+    <param name="max_start_height_alignment" value="0.0" type="double"/>
+    <param name="max_reference_refreshes" value="$(eval 2 if arg('mission_segment_only') else 0)" type="int"/>
+  </node>
+</launch>

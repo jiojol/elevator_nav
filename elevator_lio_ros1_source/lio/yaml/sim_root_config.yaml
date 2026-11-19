@@ -1,0 +1,7 @@
+# 仿真节点 (ros2 run lio sim_node) 配套根配置。
+# Select one sensor, runtime and logging configuration.
+# Paths are relative to this yaml/ directory. The three files must not
+
+sensor_config: "sensors/sim.yaml"          # 传感器配置：仿真话题与通用点云解析
+runtime_config: "runtime/mapping.yaml"     # 运行时配置：体素降采样、ikd-tree、电梯检测、IESKF 估计器
+logging_config: "logging/default.yaml"     # 日志配置：控制台/文件日志开关、可视化选项

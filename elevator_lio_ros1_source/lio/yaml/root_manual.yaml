@@ -1,0 +1,7 @@
+# 西区楼层数据：电梯自动门检测在走廊误触发，改用手动触发。
+# Select one sensor, runtime and logging configuration.
+# Paths are relative to this yaml/ directory. The three files must not
+
+sensor_config: "sensors/livox.yaml"        # 传感器配置：雷达类型、外参、话题订阅
+runtime_config: "runtime/mapping_manual.yaml"  # 切片实验用基准参数
+logging_config: "logging/default.yaml"     # 日志配置：控制台/文件日志开关、可视化选项

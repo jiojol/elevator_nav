@@ -1,0 +1,1841 @@
+{
+  "trials": [
+    {
+      "folder": "debug_learned_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 35.00000000000236,
+        "duration_wall": 35.000245982002525,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 164
+        },
+        "first_trajectory_sim_time": 2.1600000000000015,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          1.2945073104813964,
+          1.5226161146778827,
+          0.3667288233818121
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": true,
+      "body_path_length_m": 6.470816280093528,
+      "final_body_xy_error_m": 1.8304902288382998,
+      "final_body_yaw_error_rad": 0.16786303759142657,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [
+        2,
+        5
+      ],
+      "graph_reported_latency_ms": [
+        33.325071999570355,
+        13.513932000932982,
+        14.8017270003038,
+        15.923062001093058,
+        16.446080000605434,
+        15.709837000031257,
+        16.097698000521632,
+        15.320882001105929,
+        15.433204000146361,
+        15.559415998723125,
+        15.85218499894836,
+        14.905625001119915,
+        15.051203001348767,
+        14.504536000458756,
+        15.661228997487342,
+        15.106000999367097,
+        15.467260000150418,
+        14.875431999826105,
+        14.579645001504105,
+        15.024823002022458,
+        15.14578999922378,
+        12.1993669999938,
+        12.485466999351047,
+        12.12464900163468,
+        12.371893997624284,
+        12.181199999758974,
+        12.556377998407697,
+        13.020967002375983,
+        26.665684999898076,
+        13.21300500057987
+      ],
+      "raw_sha256": {
+        "result.json": "f23b59801fcea40c458a714163aff7cea2170a322fe6c06926e3b9119d834ef9",
+        "events.json": "fa58f0a4e1dbe8c30f98d5aa3f8ea8f4b9210ef86e3b43547231bf533d75642f",
+        "trajectory.npy": "6d1432df50be8d042f3ae14b21945c8a45c949408c835a4a30cc3376c5b36bf1",
+        "qpos.npy": "af14b225543ef0bf30d653eae92f19155c272a228e78af6c113e5565ac3e3c31",
+        "mocap.npy": "8096712e0f7fce7d9cc43367603d6c688609dd1f63f2e10d87bbcbf154bf7f87",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "1d04dd66007a1a266ebd3e3d4fc900bbd44b3e2f5a31d361f2c715950bfe318d"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "learned",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 40.881590405999304,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef",
+        "source_sha256": {
+          "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+          "simulation/run_case.py": "e6e66efdf1c8f66f3943a0f2e1ac00118e91c13ffa45b213e04ed9571910c49a",
+          "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+          "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+        },
+        "remote_build_verification": "SCAN clean-build source, executable and library hashes verified."
+      }
+    },
+    {
+      "folder": "fixed_final_yaw",
+      "report": {
+        "case": "final_yaw",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 26.184000000002083,
+        "duration_wall": 26.184219506998488,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0200000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 2.8902652413026098,
+        "final_body_xyz": [
+          2.7129581661524016,
+          -0.03819181111132355,
+          0.36259891183853943
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 5.661611231147863,
+      "final_body_xy_error_m": 0.006412624641891788,
+      "final_body_yaw_error_rad": 0.07241971312053463,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "9c24d872d207520d0facc5e4d3c104297d8e3b9effaa990c9b43d8e623dc2b13",
+        "events.json": "da349670023772c6f014cace66e6eabd05bd659fcfbb7a29c5ceb224113bbf5a",
+        "trajectory.npy": "4143f6aeaf41f855336a80620d8164468ca69e5ef98ea5538cfe93041cb25dfb",
+        "qpos.npy": "cc15c02ee352baf5765c8e4b4f69ccc0d3ad2401243351344c771ee1db0842bd",
+        "mocap.npy": "52b624b3565aa402797ca126410bddd2b2d0567465b581b01278c4475f0ca1e1",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "a4fe45a6fc7d8408d2aa495708f21d52ae23a96917c0dee89a77cd128581caca"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "final_yaw",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 30.535399143001996,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_blocking_then_clear",
+      "report": {
+        "case": "blocking_then_clear",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 40.003999999999586,
+        "duration_wall": 40.00422696299938,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 856,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.156378465520898,
+          -0.1389955313660406,
+          0.28687386041939367
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 4.998895211714717,
+      "final_body_xy_error_m": 0.1712917932505086,
+      "final_body_yaw_error_rad": 0.18467989654626604,
+      "first_contact_sim_s": 22.304000000000787,
+      "first_sampled_zero_command_delay_s": 0.1000000000000334,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "e588fbc03381b1621fc5cf0bf53501e24a4b6d7eda8c9b2182056552a03c7dae",
+        "events.json": "ec692ade9414089aef34f34d31e410ef778e150e2aa764cdb91c185c210a16a3",
+        "trajectory.npy": "a398ed335dec2d7d87c5857a2ba2d0112925e0e7cf25ea6dfbbb2457421d59e1",
+        "qpos.npy": "3792cc4e971d484c2444f947f5a1a97c086c99a951bb5285fe50efa2171b1aea",
+        "mocap.npy": "fed196d7301370d07cf934dc3f549bd93fed3355cd5d52bd40582def10dd798b",
+        "scene.xml": "32bd090a934b182767c56c776f2f5d086dd567b9b65a58d0247efd769fa9b307",
+        "planner.log": "319ceed2c20a7337e67496b6c87499e5fccdb9cdb493829f1afa63127221a9cf"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "blocking_then_clear",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 43.7544399469989,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_learned_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.843999999999579,
+        "duration_wall": 7.8442386189999525,
+        "counts": {
+          "body_contacts": 199,
+          "obstacle_contacts": 223,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 29
+        },
+        "first_trajectory_sim_time": 2.0160000000000013,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.4789792331227729,
+          -0.6230929663080447,
+          0.2974390580103868
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 2.6726435345944335,
+      "final_body_xy_error_m": 2.8229345563604324,
+      "final_body_yaw_error_rad": 0.1888541029247453,
+      "first_contact_sim_s": 6.4439999999997335,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [
+        25.708811001095455,
+        15.24679400245077,
+        15.517410000029486,
+        17.192091996548697,
+        14.90651899803197,
+        14.947173000109615
+      ],
+      "raw_sha256": {
+        "result.json": "c5a9756afbe180243de15e17278e64f4f273246fb0e244c71c3d58adc774a801",
+        "events.json": "cf5fc75786c868275b9427b00a54377f54b3d1ccac7b1c30a3fa3d4c71d738f5",
+        "trajectory.npy": "49b3e87297c12cfb18089164adde178661f5fe6acea118097530242cb62d195f",
+        "qpos.npy": "6a67a39c10daf534902aae4897adf9adfa5461063d304935a7db2b2f5599bd65",
+        "mocap.npy": "a14d80863e1bcb365426f87b77b3b1ae7cf0a5e133f59179c519986ed36daedc",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "9a00271899ddc640102ca27a6a0dd72ab634206795d350b5f1541acb00b7c084"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "learned",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 12.178342981998867,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_door_055",
+      "report": {
+        "case": "door_055",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 13.427999999998965,
+        "duration_wall": 13.428254629001458,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0240000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.1792966831445177,
+          -0.15502211556077383,
+          0.3773098117597226
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 4.855487870406457,
+      "final_body_xy_error_m": 0.1684392213799811,
+      "final_body_yaw_error_rad": 0.05853427878480959,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "cf709bc75394414322388d64b291bd2a69c1d606b1bb84a6120477c8aa1e7d03",
+        "events.json": "11149eb74db7df5c158e4aa8f19b9aca9478c4ce8ca641d3c9638f86e4a6027b",
+        "trajectory.npy": "e421a19dfec7213c112d4ab6b04add76e160b3da3c5a76c44c2916af5b40e6ab",
+        "qpos.npy": "63929f589edd31a0f3a68645665071c01a58054de2e101a7cd175deba39881b1",
+        "mocap.npy": "408113d5303e11e449c2170a959f3d6d6af19438cc6391540af2b9d8c3e5e4d5",
+        "scene.xml": "67b0018b3a0761fcfad614d7fccdd9892b1f8f7a7af29072795142d06cc4a403",
+        "planner.log": "a9086ec5f8caf17aad03784d105766647b218b2798716ea2c33b768278180095"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "door_055",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 16.968415530998755,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_door_065",
+      "report": {
+        "case": "door_065",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 13.29199999999898,
+        "duration_wall": 13.292223247997754,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.164545213096857,
+          -0.14849655529218755,
+          0.3697682600653347
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 4.825713372628502,
+      "final_body_xy_error_m": 0.1725987468647144,
+      "final_body_yaw_error_rad": 0.05252207670911294,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "e7c06cb6d1127900ea0c3b0dc38b52b9013a4886788d1dddcebfe3ea736b54e8",
+        "events.json": "bc06d9a7134b3b1439bb5812bdceea5e7e6d301bde5a492311ad7970804bddaf",
+        "trajectory.npy": "6759ee2aa2ebd259491a558db9cbebcdfc3042d515f52c4382481e1250e95ed1",
+        "qpos.npy": "264e0fdbee59d413a3e2f7e7b726c126409dfe9c433a52907d984424966cdd6f",
+        "mocap.npy": "8089e91d9097587b0b252872861ca76a5beb0bf9c3c38085309388d5418d1528",
+        "scene.xml": "9d3c321872d2921593dbfbedfc5427bf1876bfed09429930cae3af7b6c2fa8e6",
+        "planner.log": "3aecbd84b5637998f5d665419f6d4751c951bd078f80afba7b44c3d923a30d1b"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "door_065",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 16.82341121599893,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.483999999999619,
+        "duration_wall": 7.484222581002541,
+        "counts": {
+          "body_contacts": 169,
+          "obstacle_contacts": 206,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0360000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.4804631392211079,
+          -0.45153382314153734,
+          0.2986517085781747
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 2.5001960214892707,
+      "final_body_xy_error_m": 2.792718812073804,
+      "final_body_yaw_error_rad": 0.21139244478216612,
+      "first_contact_sim_s": 6.483999999999729,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "820602ca5e1a0ad1e3f7ba6177ebf478bf84687cd9b87c6a02b371cc27622041",
+        "events.json": "ae5d2df3271a162ef77ac8c7daf5f07bd875cc62ac5206dc8ce55239c8d38b7f",
+        "trajectory.npy": "a4dc39c857834a6f5aa1007d8d9658d025df6237f7a3c231362b2e0689404fb1",
+        "qpos.npy": "934b9d2ef8677bbf6e254c61b7b410d7792ea3ce68b969b89bfc3d97519c333d",
+        "mocap.npy": "42385be99dbd2245513a2abb5427b487deebe058687463aafcf68292fe2bb341",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "08d7aa425cf12feb0b1fa560a209a07a441009816b250c58676a51c0ccdc278f"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 11.220199949999369,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_final_yaw",
+      "report": {
+        "case": "final_yaw",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 25.82000000000196,
+        "duration_wall": 25.82023829500031,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0200000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 2.8902652413026098,
+        "final_body_xyz": [
+          2.7124417051554053,
+          -0.04070684299414993,
+          0.3512135135841272
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 5.584073295100292,
+      "final_body_xy_error_m": 0.007568021461682984,
+      "final_body_yaw_error_rad": 0.0831738319458104,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "c4f7f1721376405617a4fddc9292b4b3a96d19a4ec04b37118422ab0488b9fb1",
+        "events.json": "b52d871df1b8e5d64c6677500383261b4d5d147f50c0319976c5b2f791f3ac33",
+        "trajectory.npy": "931ee952dee80690c2541ee51c5abcfe116592c636570259f3c45a3987ef593b",
+        "qpos.npy": "e19b2fd6d032c1b1b53a5b0025a22f972ef5a1b6fe00337bf6f1b7ab546fe047",
+        "mocap.npy": "f7fff8b617001df98a5c610b9089107c035fe44fa7e81ac8906e79831f9f702e",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "059a572652d2ccf53f86307dd401463b5d19655106a75388220b517a05343e50"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "final_yaw",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 29.454274490999524,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_large_obstacle",
+      "report": {
+        "case": "large_obstacle",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 29.096000000003055,
+        "duration_wall": 29.096230368999386,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 2,
+          "position_lost": 1,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 1,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.3371409741571023,
+          -0.1476862618365618,
+          0.2986324359964197
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 6.0153457661790295,
+      "final_body_xy_error_m": 0.141345007780699,
+      "final_body_yaw_error_rad": 0.050609100585517895,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "33516888fd481aa91dd3fef4bbacef24a8449730df3d5b566622fdf51d349b1a",
+        "events.json": "1f68a9bb315d422e5312842d203918e82829363511f6270f19ad2e0c2ee9ae6e",
+        "trajectory.npy": "d8113cff61569625f5f82b83e8aef24cb0c890c8df9df01cd13311c88c37d739",
+        "qpos.npy": "b8be513617d642ada0526b2e87c0dc164ce2811c79f0cab01e6620a0466e91ea",
+        "mocap.npy": "46308ddc3f15364eecb189366208664bbeac71ff532d702b1913a607062f6074",
+        "scene.xml": "cc599cdc0b0b005b90c139ad979138fc03f86fd66ff0d6aef1e7719f34580b84",
+        "planner.log": "f97c2fb60c4b7149b85dcbfe286dce4dc3787ee4534338a07f43040d7fe80e6c"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "large_obstacle",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 32.64277005999975,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_stairs",
+      "report": {
+        "case": "stairs",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 14.9239999999988,
+        "duration_wall": 14.924230106000323,
+        "counts": {
+          "body_contacts": 2,
+          "obstacle_contacts": 0,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          4.4,
+          0.0,
+          1.5
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          1.1414780694088047,
+          0.07702905436235058,
+          0.8160206155514375
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 3.56392333311553,
+      "final_body_xy_error_m": 3.0385834797192093,
+      "final_body_yaw_error_rad": 0.6570620705900968,
+      "first_contact_sim_s": 12.883999999999025,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "1808b214954157cd52f4950a8e6590e00c6210b8d134f74e29195e858e67ef70",
+        "events.json": "c9c0e353ae9abc59702c4cfa3ecdc5a15a823ff073686e82468d1785c6383826",
+        "trajectory.npy": "127dd801fcf2d498bb0ed265ec98621d5399cfb5bebf4d96a93c9879ae6a2899",
+        "qpos.npy": "b5e9aa6374365bf6f351092b174e4ffa397eea0e31d89387dc16cc6fd306110d",
+        "mocap.npy": "4f390f73600acb75ce5cedbbf6f479629c86ff127c6ee79fad7d329ce8148aee",
+        "scene.xml": "435bfb80f4ccab936250fcc2e2a49196faae4fd01ecd6bd3c543f3a8941c1e45",
+        "planner.log": "ff1e265c006522cea492b86eedbb20d2dbc61be292a85894e073b74d2382418c"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "stairs",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 18.530598952002038,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "livox_native_straight",
+      "report": {
+        "case": "straight",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 13.507999999998956,
+        "duration_wall": 13.50823166400005,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0160000000000013,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.1249829425112496,
+          -0.14276658879325596,
+          0.3697702597258901
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 4.816242627344485,
+      "final_body_xy_error_m": 0.1973432270110392,
+      "final_body_yaw_error_rad": 0.04367495496662481,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "2f775478fa9689280b00a18a5f2b8a32f43aad5c9bb79975eea3b39b86ece6bb",
+        "events.json": "caf70bb2185b9047cd8ea3748bc1bb89f40f46717e1818e369aa3ef63d57c8ad",
+        "trajectory.npy": "bf5322b57431d5edfac763dbc07d826410f4ca797b8c385f4c5001ceb97596cc",
+        "qpos.npy": "9797b90f81409fad15d611e7f0d38ff27027f4f02dfb38cea5dfb86922912d4c",
+        "mocap.npy": "b910a97afd153e912329e0d497dcea907b257965048a150a3531ffc66335d160",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "84f582848b8c571fbfb602efe9e6492ca938de22f636835bf7985927f133fc18"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "straight",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 16.92005795300065,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_learned_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.503999999999617,
+        "duration_wall": 7.505852150999999,
+        "counts": {
+          "body_contacts": 167,
+          "obstacle_contacts": 192,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 26
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.47824869418840626,
+          -0.4677430475563161,
+          0.29904959851760793
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 2.515911654017815,
+      "final_body_xy_error_m": 2.7930898723795536,
+      "final_body_yaw_error_rad": 0.18520001717609938,
+      "first_contact_sim_s": 6.503999999999727,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [
+        135.6493839994073,
+        54.35818000114523,
+        40.92119800043292,
+        50.11249000017415,
+        81.69576399814105,
+        50.11316500167595
+      ],
+      "raw_sha256": {
+        "result.json": "47ddd579cf84f72888ebb1ed83bee0940e7f0a04dcaf6eda84e847a4747cc839",
+        "events.json": "936b1c0c2aea01d27417c66f56e24f610f2ac9a2714c26ae226d6e2bf28d9ee4",
+        "trajectory.npy": "b987395761fa6216f817b02800f88009b4b80567380fe6c8f90ecfe9a6d9306f",
+        "qpos.npy": "82d498bbb089108627c74054b9649f6f37f1dce426a0bc322bec04fcfd6ccc9d",
+        "mocap.npy": "c8b4b8a0125bc152adbd5fbfa60e3acf1d6dc87b060e136aeda04b02e4f3af29",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "544c8c66a833dc90572b5961a8fec234ffb52affec5ee7fd183b072b8b3a2230"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "learned",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 12.176081908000924,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_blocking_then_clear",
+      "report": {
+        "case": "blocking_then_clear",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 45.003999999996815,
+        "duration_wall": 45.004225237000355,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0200000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -1.4865999216674557,
+          -0.10767999558399044,
+          0.2868518511642687
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 1.324445349226401,
+      "final_body_xy_error_m": 3.766191783574785,
+      "final_body_yaw_error_rad": 0.09150328653119624,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "815f5a7e3d08f6e0ab7c6266b32a7a85b6854e939d1f067a795070fe47617484",
+        "events.json": "26e066186f763d501496211fecc7a01eae8565d29b97a58d5bf4ad6948684e22",
+        "trajectory.npy": "d162c29449d5603f0078cd5d7fa41554efebc37e19c8348151b5898e288a2ed2",
+        "qpos.npy": "dcaba82d02248e40c12c26c8be04f8292fdc9362e8ce68dee394b7df304e72e3",
+        "mocap.npy": "828138e0256c8a0f92924f4a49d362cdbdc4c17179a1a1cb76c199a766036a67",
+        "scene.xml": "32bd090a934b182767c56c776f2f5d086dd567b9b65a58d0247efd769fa9b307",
+        "planner.log": "be829b59c6cf34f85577b8922f4a479b1e07cb77f0832c9b1bb6e0b8e28b6069"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "blocking_then_clear",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 49.10383170000205,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_door_055",
+      "report": {
+        "case": "door_055",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 35.00000000000236,
+        "duration_wall": 35.00025067800016,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 3062,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          0.08839929610000193,
+          -0.13897550176458798,
+          0.28685185321601164
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 2.7564367576005355,
+      "final_body_xy_error_m": 2.1934342357620107,
+      "final_body_yaw_error_rad": 0.08984910743886486,
+      "first_contact_sim_s": 6.843999999999689,
+      "first_sampled_zero_command_delay_s": 0.6599999999999273,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "f24d4ed8b7db2d6c3e2984aee270aa06b6f77dddb09fedcd57ea04f11bb15a26",
+        "events.json": "56f75238f92f8552631de2c53899734f7d9e03c0a206b540634353c7e50858dc",
+        "trajectory.npy": "efc7d86bfbdf96cfa6618cb717eee549fb0a771c331efad75caea8e9f8c6bb0d",
+        "qpos.npy": "6c68996f8c737427045214f3b70a6cf516cb530a30e3577f90791dadffaaee85",
+        "mocap.npy": "cef4a279781b00ad52e30742ff96cc465e811b7517fe202e45d044ecc829d936",
+        "scene.xml": "67b0018b3a0761fcfad614d7fccdd9892b1f8f7a7af29072795142d06cc4a403",
+        "planner.log": "53ae170a0728c493582d4c777d6ad174b00496f6eee5be380f5fe607d5206090"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "door_055",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 38.916879091997544,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_door_065",
+      "report": {
+        "case": "door_065",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 13.179999999998993,
+        "duration_wall": 13.192007017998549,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.1659749508808157,
+          -0.17226116233464708,
+          0.3765214201449431
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 4.871546400727597,
+      "final_body_xy_error_m": 0.19029903938459078,
+      "final_body_yaw_error_rad": 0.04771977337061993,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "458381cde44b9ea3d25232cd6174f736ab26dac94fc7d4e5149043c8b8ee14b6",
+        "events.json": "af49c3d8a01af349b43b221c4d196746c918f00cf6e21446ff9ee84d07d29fff",
+        "trajectory.npy": "36cd5dc8a0ad654241844c826ff60e68eb57905e488f513e4d83de957d1a3276",
+        "qpos.npy": "ed938dab5595280f2fea982fc80b96ea0952ba08a83f97d13b03fbd54a9b3b5e",
+        "mocap.npy": "8fbdcb59712720913117f757530743694eced07e1996627c1f77345d0f2b1b19",
+        "scene.xml": "9d3c321872d2921593dbfbedfc5427bf1876bfed09429930cae3af7b6c2fa8e6",
+        "planner.log": "22a42f9bc1d0251cdc6bebc864ca7a50cd5d3e1c400b8b840d32aed8dc19a3f2"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "door_065",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 17.536222406997695,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.74399999999959,
+        "duration_wall": 7.744243081000604,
+        "counts": {
+          "body_contacts": 189,
+          "obstacle_contacts": 222,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0200000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.4858307535226441,
+          -0.5566460367131045,
+          0.30040527372155007
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 2.5891035911766225,
+      "final_body_xy_error_m": 2.816188638388401,
+      "final_body_yaw_error_rad": 0.25135469015715345,
+      "first_contact_sim_s": 6.5439999999997225,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "935addb3eb1950081c98a74639aed268de6d0f5eb9ba91e08d07a3482c04a78e",
+        "events.json": "d02afbcf568b8e548e1258e8df20540b3e4ff8786b07461c54c73624eda8eb2c",
+        "trajectory.npy": "c53703f205ca97eadd18b915259f21be87ec2ec64abfc37cbce8e06dc0a3717b",
+        "qpos.npy": "95488af066885d7bc1a4e22b8a61b421b025845c859637a938da876eed0fdba7",
+        "mocap.npy": "e9c19e009b6ca335252b3f7fa3f5c0cda11100dfa3c1ff0f6f5157db6e74de1c",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "9b79cd4b7a6fc7b9315affd13c163bee4e85be31747d250c8429ff0f21be2363"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 11.761871367998538,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_large_obstacle",
+      "report": {
+        "case": "large_obstacle",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 28.696000000002922,
+        "duration_wall": 28.69624627000303,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 2,
+          "position_lost": 1,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0400000000000014,
+        "position_recoveries": 1,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.343123103268658,
+          -0.16257450826473152,
+          0.29917552243577245
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 6.165910476083383,
+      "final_body_xy_error_m": 0.15727628127059257,
+      "final_body_yaw_error_rad": 0.06447742300777688,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "a958a5f1a9fdab8b27b60f41db4ca1a4594b1ffc33682f640e3079411f7d9868",
+        "events.json": "afd914b2a25a531fcfa158287ae2772737516f9e819464bbd2831bb3a2ed7a26",
+        "trajectory.npy": "333b276236882180b20709846ada58a679c2fbc0b8bd4d29fa98cb84bbefd1f9",
+        "qpos.npy": "2419492df9329661e4ef57198c541145ae779ae796cea258ffcfcf29b19ea9a5",
+        "mocap.npy": "8c2a97c9d312aefe186c7efc186fb68655a9351aef4fab57e69e3eac049a0d28",
+        "scene.xml": "cc599cdc0b0b005b90c139ad979138fc03f86fd66ff0d6aef1e7719f34580b84",
+        "planner.log": "8e3a2102fe1cf8aa43fe1c04acccb9040952da482cc04b9c5c20590709efb120"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "large_obstacle",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 32.63296942600209,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_native_stairs",
+      "report": {
+        "case": "stairs",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 27.056000000002374,
+        "duration_wall": 27.056249919998663,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0360000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          4.4,
+          0.0,
+          1.5
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          4.057007327932752,
+          -0.06870352018657853,
+          1.7956027432721826
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 6.162291267544164,
+      "final_body_xy_error_m": 0.13140705607077982,
+      "final_body_yaw_error_rad": 0.05968731863772957,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "d3d51c6a603bc0c3d837ef72db14b396e7f732c66271bcfa307b6f523fd96501",
+        "events.json": "bfe4294d2a21c3293ca1d0cbe40a53c9a3afe146f542d04991c3f337c2174c9e",
+        "trajectory.npy": "496fd6afc024da7b9119e4b4cf33ab0c7b8952bafa09925d7fc6b9e03bdb9c80",
+        "qpos.npy": "447ef72bac7ec598110a031b95e8dab631c8eb112c23ff4ca7f964991ea3c25b",
+        "mocap.npy": "396a928e7f84945778cf524a4eef60bfe3f612432135a068795717a60d5748ec",
+        "scene.xml": "435bfb80f4ccab936250fcc2e2a49196faae4fd01ecd6bd3c543f3a8941c1e45",
+        "planner.log": "435a150727bc7200150dcad2f51b09445b4b7099009744dc90f3c88c34351709"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "stairs",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 30.953189224001108,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "matrix_untrained_dynamic_crossing",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.863999999999577,
+        "duration_wall": 7.869393291999586,
+        "counts": {
+          "body_contacts": 192,
+          "obstacle_contacts": 215,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.5043713878963335,
+          -0.5829576111928493,
+          0.30002062001506685
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 2.5998474690641324,
+      "final_body_xy_error_m": 2.8394995090860444,
+      "final_body_yaw_error_rad": 0.34242639600557717,
+      "first_contact_sim_s": 6.56399999999972,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "ea78da0520f18715d5adf6b17adc24f5bc12b599ea3388736e0eb86add3a6bb4",
+        "events.json": "f2faabc02fdd9796bedd81dce4d351424444268d5cd3e698ed03cbb4475bf87a",
+        "trajectory.npy": "2f1ac92ab3736d6f898e1b4c0315d5c51e3cfed265e564b7952a49ec070b2b04",
+        "qpos.npy": "0179cddbdb368a66e5df17024214879dfcb84ae4f774b42df7d0e867697e3203",
+        "mocap.npy": "0feda4e9d9a71469355469ce604654f6f23c4931f52723b80e54685581986e66",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "b54d5571fb03fd7db6595c3c9f77d92b64128bf9d8af71b24c30d3f450fb3950"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "untrained",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 12.089022840002144,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "native_final_yaw",
+      "report": {
+        "case": "final_yaw",
+        "result": "failed",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 41.987999999998486,
+        "duration_wall": 41.98828064799818,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 1,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 2.8902652413026098,
+        "final_body_xyz": [
+          2.7127286020992813,
+          -0.04651220213970851,
+          0.36682060036805175
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 5.729877196648043,
+      "final_body_xy_error_m": 0.01171945725173207,
+      "final_body_yaw_error_rad": 0.1316162575004172,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "affa0f1a17a4814b70f967f009a4be6dec09b7b3bf636948b5b3f09eb9a72dd8",
+        "events.json": "ee8a2a65537908d627fea3f4860c8e85110884fbe27b63e0a727d9314a573996",
+        "trajectory.npy": "8c81f9d7c7dd1fdbbac903b318cdb96ac2880795a49b022bd5163843733431df",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "fb00b4fa550db031860ced5ccc2e8807dd767fbbfe8fe842f78da05ccce74a8f"
+      },
+      "has_recorded_physics_replay": false,
+      "run_metadata": {
+        "case": "final_yaw",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 45.831973789001495,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "native_large_obstacle",
+      "report": {
+        "case": "large_obstacle",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 45.003999999996815,
+        "duration_wall": 45.004238689001795,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.360688906663722,
+          -0.2811442796587151,
+          0.28685185127749324
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 5.563713848945429,
+      "final_body_xy_error_m": 0.2747804760197913,
+      "final_body_yaw_error_rad": 1.0317087638661524,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "6468e23076d18e402dff0757872a10e7233736cc938692049cbd7d5ec4dc0646",
+        "events.json": "9b516b8981114d10dcf61d0338e7a78cd262f1fd377ae54fd77786446c31905a",
+        "trajectory.npy": "5fb9cb9e421d4a3a3e7a13e2b162547c1d19b03cbef729b3502ed7b4126ccc59",
+        "scene.xml": "cc599cdc0b0b005b90c139ad979138fc03f86fd66ff0d6aef1e7719f34580b84",
+        "planner.log": "966f9c83c1bf79da1fadcdd687f94147df2cc171a8b13b5907eb217d98bea04e"
+      },
+      "has_recorded_physics_replay": false,
+      "run_metadata": {
+        "case": "large_obstacle",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 48.78752359400096,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "native_straight",
+      "report": {
+        "case": "straight",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 13.575999999998949,
+        "duration_wall": 13.576266042997304,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0240000000000014,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          2.133010533434454,
+          -0.12636754019691104,
+          0.37572986968396993
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "earlier_fixed_rays",
+      "debug_logging": false,
+      "body_path_length_m": 4.846898588265265,
+      "final_body_xy_error_m": 0.18099146778061695,
+      "final_body_yaw_error_rad": 0.10613373934033715,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "4faa22f5b8bfae7913959b1ef5229bec64f72a3ffbd5085a5b8138e6ea7db5d5",
+        "events.json": "d3e5d0c5227af05ecd69ec8a313c29cf26ed1cdc57710c864d94c172c2b3171d",
+        "trajectory.npy": "8f21c001bdbd7c269ef266a7298d46e4c3050e934210a75203a3732d3a5c5bb9",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "d3770d731167ca36df44fd179137f72dace0574409728d91c4365834ad0c930c"
+      },
+      "has_recorded_physics_replay": false,
+      "run_metadata": {
+        "case": "straight",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 18.65832936100196,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef"
+      }
+    },
+    {
+      "folder": "repeat_native_door_055_2",
+      "report": {
+        "case": "door_055",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 35.00000000000236,
+        "duration_wall": 35.00024240499988,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 244,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0320000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          0.09735013737813984,
+          -0.1264509832912217,
+          0.28819049157143667
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 2.8260663920347087,
+      "final_body_xy_error_m": 2.1838599588256895,
+      "final_body_yaw_error_rad": 0.06004812019832803,
+      "first_contact_sim_s": 7.323999999999637,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "9f5fce4861f6e8421bacbc0e16fb8cd4e7bae373913db268fcb84c47757a2be2",
+        "events.json": "dee9ccfe6745725987f7969f885fd572f5c068a61e2a33e8e830ca6017d603da",
+        "trajectory.npy": "7dbbd3acc65ba0bbba0a2146e1956317e8ba83196d50e5090ececcd0cb0db390",
+        "qpos.npy": "3b8f424424e8e585fb14940057f5efbaa029aeb245e0e4b3df088ef609504e84",
+        "mocap.npy": "cef4a279781b00ad52e30742ff96cc465e811b7517fe202e45d044ecc829d936",
+        "scene.xml": "67b0018b3a0761fcfad614d7fccdd9892b1f8f7a7af29072795142d06cc4a403",
+        "planner.log": "56ec670b71e8ec49b27630203d04c40187825d7bbb6c180e028d2c834d3ef4cd"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "door_055",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 38.63492856799712,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef",
+        "source_sha256": {
+          "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+          "simulation/run_case.py": "e6e66efdf1c8f66f3943a0f2e1ac00118e91c13ffa45b213e04ed9571910c49a",
+          "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+          "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+        },
+        "remote_build_verification": "SCAN clean-build source, executable and library hashes verified."
+      }
+    },
+    {
+      "folder": "repeat_native_stairs_2",
+      "report": {
+        "case": "stairs",
+        "result": "timeout",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 65.00399999998751,
+        "duration_wall": 65.00422122600139,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 1,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0280000000000014,
+        "position_recoveries": 1,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          4.4,
+          0.0,
+          1.5
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          3.967850903010944,
+          -0.10565703718604301,
+          1.786851851159205
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 5.809829823026413,
+      "final_body_xy_error_m": 0.22784682646324403,
+      "final_body_yaw_error_rad": 0.0387531271786835,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "9afb1e96acbc6e767e42ceda686c9998b27dd60bbfd48670fbb5a815134a9570",
+        "events.json": "7cc32fe9d8a3d49e4c884347bfbae7c83aedb87d30da8838ba8252d80600870e",
+        "trajectory.npy": "9ab2b494bfb530794981268f2ec6c7d0d930e35c61f1fe495364badd4979a956",
+        "qpos.npy": "2e3e4c354ab0de76216cde673109e0f8a2b11b144c42f06fc46d7372fa74656f",
+        "mocap.npy": "c68ca17fd870490a7e158b5d74460f2ebbee3df7aab605d98667527cb8af41fe",
+        "scene.xml": "435bfb80f4ccab936250fcc2e2a49196faae4fd01ecd6bd3c543f3a8941c1e45",
+        "planner.log": "04908ee66c9b63a11cc759275aff0ca3a254a79f34183fd0801d1e5deadef1d1"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "stairs",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 68.45485321400338,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef",
+        "source_sha256": {
+          "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+          "simulation/run_case.py": "e6e66efdf1c8f66f3943a0f2e1ac00118e91c13ffa45b213e04ed9571910c49a",
+          "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+          "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+        },
+        "remote_build_verification": "SCAN clean-build source, executable and library hashes verified."
+      }
+    },
+    {
+      "folder": "repeat_native_stairs_3",
+      "report": {
+        "case": "stairs",
+        "result": "reached",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 23.648000000001236,
+        "duration_wall": 23.648233026000526,
+        "counts": {
+          "body_contacts": 0,
+          "obstacle_contacts": 0,
+          "position_reached": 1,
+          "position_lost": 0,
+          "goals_reached": 1,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0160000000000013,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          4.4,
+          0.0,
+          1.5
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          4.010805875508447,
+          -0.03008117781462492,
+          1.7959544976356154
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 5.82641324762173,
+      "final_body_xy_error_m": 0.16815561345147723,
+      "final_body_yaw_error_rad": 0.09501849552923028,
+      "first_contact_sim_s": null,
+      "first_sampled_zero_command_delay_s": null,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "c8d2118544545fd6167bee0bc35e3ce8bb868f53bfecf2248c8482ba5ebf975a",
+        "events.json": "873c23275b656e1a03301c9767e4fb1e6feb66289a0177f8471a5a8657be1107",
+        "trajectory.npy": "4d1778979874a9e33a2a0e4ffffdf9630da44fd380c59007d1365837bae7531b",
+        "qpos.npy": "95c8920036f005bf5f8b79337d75912e58b3970f1c3b70f69717439c2338e891",
+        "mocap.npy": "4dee11e318e574e45778253fa92a11c9aad730615d86766e8579b720ded9e3c2",
+        "scene.xml": "435bfb80f4ccab936250fcc2e2a49196faae4fd01ecd6bd3c543f3a8941c1e45",
+        "planner.log": "5fb5e831e5e1d3d8fbd06032c07c978358d4ddf2c447913a469406eda87defb5"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "stairs",
+        "mode": "native",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 27.191334771003312,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef",
+        "source_sha256": {
+          "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+          "simulation/run_case.py": "e6e66efdf1c8f66f3943a0f2e1ac00118e91c13ffa45b213e04ed9571910c49a",
+          "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+          "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+        },
+        "remote_build_verification": "SCAN clean-build source, executable and library hashes verified."
+      }
+    },
+    {
+      "folder": "repeat_untrained_dynamic_crossing_2",
+      "report": {
+        "case": "dynamic_crossing",
+        "result": "fell",
+        "physics": "MuJoCo dynamic free-root + ONNX actuator policy; no kinematic root integration",
+        "duration_sim": 7.663999999999599,
+        "duration_wall": 7.664276134000829,
+        "counts": {
+          "body_contacts": 182,
+          "obstacle_contacts": 209,
+          "position_reached": 0,
+          "position_lost": 0,
+          "goals_reached": 0,
+          "goals_failed": 0,
+          "learned_guides": 0
+        },
+        "first_trajectory_sim_time": 2.0360000000000014,
+        "position_recoveries": 0,
+        "policy_sha256": "bc08253fd68f661bf6be5ce5ca70cec555c3fde2c397d23fbe9814a998e056f5",
+        "goal_reference_xyz": [
+          2.5,
+          0.0,
+          0.0
+        ],
+        "goal_yaw": 0.0,
+        "final_body_xyz": [
+          -0.4937993271617718,
+          -0.5186100478765376,
+          0.301359623800819
+        ],
+        "source_reference": "saved lidar mount, original .4 m navigation height",
+        "lidar_sampling": "changing Livox Mid360 pattern, at most 4096 rays per 0.1 s",
+        "ros_master": [
+          1,
+          "",
+          "http://192.168.31.9:11781/"
+        ]
+      },
+      "input_revision": "changing_livox",
+      "debug_logging": false,
+      "body_path_length_m": 2.5991616115429697,
+      "final_body_xy_error_m": 2.8170161097591735,
+      "final_body_yaw_error_rad": 0.2550077654555167,
+      "first_contact_sim_s": 6.463999999999731,
+      "first_sampled_zero_command_delay_s": 0.019999999999997797,
+      "accepted_learned_trajectory_ids": [],
+      "graph_reported_latency_ms": [],
+      "raw_sha256": {
+        "result.json": "28ea26dcd5ff3ea35bb26a36c3bd6fc361e3e6c309c98ee5c1ff9a1ec0d04f58",
+        "events.json": "06809adafc9c978c24475dabce0a4d2b0ce5d439874c2625956937620edab9a8",
+        "trajectory.npy": "8ceb4b099405124ebb41a6475ee749ecb20697a53c39fe73d13d0e6e5f996737",
+        "qpos.npy": "7e7b4262be8d1b3764f2d1506788d955409a34d1bf1a65b558d2d82ef7627826",
+        "mocap.npy": "3eb5ed2110d9b8ec75de37ef53778f3cac40431cc316e7c429f81721616b763b",
+        "scene.xml": "ba6fa4458a506f5da920d221c381f27333855037ceb453a375563487838fd24c",
+        "planner.log": "fffeadd26484561bc3d0ea49489d4d99657bdaa6f3046cccf2db8575bfc639fc"
+      },
+      "has_recorded_physics_replay": true,
+      "run_metadata": {
+        "case": "dynamic_crossing",
+        "mode": "untrained",
+        "isolated_master": "http://192.168.31.9:11781",
+        "remote_planning_host": "192.168.31.31",
+        "wall_seconds": 12.084194397000829,
+        "robot_bridge_loaded": false,
+        "local_source_revision": "b3550cef98207af25bdaf70bc317c363c5e8e6ef",
+        "source_sha256": {
+          "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+          "simulation/run_case.py": "e6e66efdf1c8f66f3943a0f2e1ac00118e91c13ffa45b213e04ed9571910c49a",
+          "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+          "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+        },
+        "remote_build_verification": "SCAN clean-build source, executable and library hashes verified."
+      }
+    }
+  ],
+  "tested_code_sha256": {
+    "simulation/physics_bridge.py": "f0cf4bf58a90159448ad06572d75486a43c004dc150cb4f0b1a2542d1aa1319b",
+    "simulation/isolated.launch": "409688c5d39848f33e2b554cdf501afaf1a6718772c3ce4df9d938510d41e756",
+    "nav/src/dog_nav_bringup/scripts/scan_command_gate.py": "ac3fb1fa09d07f57fe6a498b1615323c94b63e451777130315e617bb6d58cd8f"
+  },
+  "contact_counts_are_sampled_pairs_not_distinct_collisions": true,
+  "zero_command_delay_is_not_physical_stop_latency": true
+}

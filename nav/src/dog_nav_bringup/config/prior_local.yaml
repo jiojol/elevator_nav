@@ -1,0 +1,46 @@
+# Go2 tracking and hardware execution adapter; SCAN alone owns planning.
+closed_loop_controller:
+  no_progress_timeout: 3.0
+  no_progress_distance: 0.05
+  no_progress_yaw: 0.05
+  no_progress_command: 0.03
+  max_vy: 0.0
+  max_vyaw: 0.80
+  heading_error_threshold: 0.95
+  rotate_exit_threshold: 0.25
+  start_align_enter: 0.25
+  start_align_exit: 0.10
+  start_align_min_yaw: 0.40
+  lookahead_distance: 0.35
+  trajectory_lead: 0.20
+  segment_handoff_time: 1.00
+  linear_accel: 0.50
+  angular_accel: 1.60
+  heading_filter_time: 0.15
+  min_forward_speed: 0.10
+  odom_timeout: 0.50
+
+scan_command_gate:
+  max_execution_replans: 3
+  collision_settle_time: 0.30
+  stopped_linear_threshold: 0.03
+  stopped_yaw_threshold: 0.08
+  stop_service: /inspection/stop
+  # No automatic physical contact source is assumed; wire a verified adapter.
+  contact_topic: /dog_nav/contact_stop
+  require_contact_feedback: false
+  contact_timeout: 0.30
+  goal_xy_tolerance: 0.30
+  goal_z_tolerance: 0.20
+  # Stop fine turning inside half this angle (~10 deg), hold within ~20 deg.
+  yaw_tolerance: 0.35
+  turn_min_speed: 0.15
+  turn_max_speed: 0.40
+  turn_accel: 0.80
+  # Reverse-start alignment uses its own faster profile; final yaw stays gentle.
+  start_turn_max_speed: 0.50
+  start_turn_accel: 1.60
+  settle_time: 0.30
+  yaw_stable_time: 0.15
+  turn_timeout: 30.0
+  goal_hold_distance: 0.45

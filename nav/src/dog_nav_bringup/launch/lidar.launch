@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="driver_launch" default="msg_MID360s.launch"/>
+  <arg name="xfer_format" default="1"/>
+  <arg name="use_calibrated_mount" default="false"/>
+  <include file="$(find livox_ros_driver2)/launch_ROS1/$(arg driver_launch)">
+    <arg name="xfer_format" value="$(arg xfer_format)"/>
+    <arg name="publish_mount_tf" value="$(eval not arg('use_calibrated_mount'))"/>
+  </include>
+  <!-- 2026-10-16 /go2/imu refinement, composed with stock Go2 body-IMU geometry.
+       Source: system/log/lidar_calibration_20261016_065841_62760_body/.
+       An opt-in trial; only one publisher owns base_link -> livox_frame. -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="base2livox"
+        if="$(arg use_calibrated_mount)"
+        args="0.221454 0.018929 0.133359 0.011587544788341213 0.1274579512112959 0.0001888026941301217 0.9917762670241408 base_link livox_frame"/>
+</launch>

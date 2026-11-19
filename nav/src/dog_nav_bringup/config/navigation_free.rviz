@@ -1,0 +1,244 @@
+Panels:
+- Class: rviz/Displays
+  Name: Displays
+  Property Tree Widget:
+    Expanded:
+    - /Global Options1
+    - /Status1
+    Splitter Ratio: 0.5
+  Tree Height: 720
+- Class: rviz/Selection
+  Name: Selection
+- Class: rviz/Tool Properties
+  Expanded:
+  - /3D Pose Estimate1
+  - /3D Nav Goal1
+  Name: Tool Properties
+  Splitter Ratio: 0.59
+- Class: rviz/Views
+  Name: Views
+  Splitter Ratio: 0.5
+- Class: rviz/Time
+  Name: Time
+  SyncMode: 0
+  SyncSource: ''
+Preferences:
+  PromptSaveOnExit: false
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Alpha: 0.15
+    Cell Size: 1
+    Class: rviz/Grid
+    Color: 160; 160; 164
+    Enabled: false
+    Name: Grid
+    Normal Cell Count: 0
+    Plane: XY
+    Plane Cell Count: 20
+    Reference Frame: <Fixed Frame>
+    Value: false
+  - Alpha: 0.15
+    Autocompute Intensity Bounds: true
+    Autocompute Value Bounds:
+      Max Value: 10
+      Min Value: -10
+      Value: true
+    Axis: Z
+    Channel Name: intensity
+    Class: rviz/PointCloud2
+    Color Transformer: AxisColor
+    Enabled: true
+    Name: Global Map
+    Size (Pixels): 2
+    Size (m): 0.03
+    Style: Points
+    Topic: /globalmap
+    Use Fixed Frame: true
+    Use rainbow: true
+    Value: true
+  - Alpha: 1
+    Class: rviz/PointCloud2
+    Color: 0; 220; 255
+    Color Transformer: FlatColor
+    Decay Time: 0
+    Enabled: true
+    Name: Live Obstacle Cloud
+    Position Transformer: XYZ
+    Queue Size: 3
+    Selectable: false
+    Size (Pixels): 5
+    Size (m): 0.06
+    Style: Points
+    Topic: /navigation/obstacle_points
+    Unreliable: false
+    Use Fixed Frame: true
+    Value: true
+  - Class: rviz/Odometry
+    Enabled: true
+    Name: Localization Pose
+    Topic: /dog_nav/odometry
+    Keep: 1
+    Position Tolerance: 0.01
+    Angle Tolerance: 0.01
+    Shape:
+      Value: Axes
+      Axes Length: 0.5
+      Axes Radius: 0.03
+    Covariance:
+      Value: false
+      Position:
+        Value: false
+      Orientation:
+        Value: false
+    Value: true
+  - Alpha: 1
+    Class: rviz/Path
+    Color: 255; 230; 0
+    Enabled: true
+    Line Style: Billboards
+    Line Width: 0.18
+    Buffer Length: 1
+    Name: Current Segment Path
+    Topic: /plan_map/global_path
+    Value: true
+  - Alpha: 1
+    Class: rviz/Path
+    Color: 255; 135; 35
+    Enabled: true
+    Line Style: Billboards
+    Line Width: 0.18
+    Buffer Length: 1
+    Name: Cabin Ingress Preview
+    Topic: /plan_map/ingress_preview
+    Value: true
+  - Alpha: 1
+    Class: rviz/Path
+    Color: 255; 85; 225
+    Enabled: true
+    Line Style: Billboards
+    Line Width: 0.18
+    Buffer Length: 1
+    Name: Destination Floor Preview
+    Topic: /plan_map/destination_preview
+    Value: true
+  - Class: rviz/Marker
+    Enabled: true
+    Name: Final Goal
+    Marker Topic: /plan_map/final_goal_marker
+    Queue Size: 2
+    Value: true
+  - Alpha: 1
+    Class: rviz/Path
+    Color: 255; 150; 30
+    Enabled: false
+    Line Style: Billboards
+    Line Width: 0.1
+    Buffer Length: 1
+    Name: SCAN Reference Path
+    Topic: /initial_path
+    Value: false
+  - Class: rviz/Marker
+    Enabled: true
+    Name: SCAN Local Trajectory
+    Marker Topic: /scan_planner_node/optimal_list
+    Queue Size: 10
+    Value: true
+  - Class: rviz/MarkerArray
+    Enabled: true
+    Marker Topic: /elevator_nav/markers
+    Name: Elevator Points
+    Queue Size: 2
+    Value: true
+  - Class: rviz/Marker
+    Enabled: true
+    Name: Planned Start
+    Marker Topic: /plan_map/query_start
+    Queue Size: 2
+    Value: true
+  - Class: rviz/Marker
+    Enabled: true
+    Name: Current Segment Goal
+    Marker Topic: /plan_map/query_goal
+    Queue Size: 2
+    Value: true
+  - Alpha: 1
+    Axes Length: 0.4
+    Axes Radius: 0.04
+    Class: rviz/Pose
+    Color: 0; 200; 255
+    Enabled: true
+    Head Length: 0.2
+    Head Radius: 0.08
+    Name: 3D Goal
+    Shaft Length: 0.35
+    Shaft Radius: 0.04
+    Shape: Arrow
+    Topic: /dog_nav/goal_pose
+    Value: true
+  - Alpha: 1
+    Class: rviz/TF
+    Enabled: false
+    Name: TF
+    Value: false
+  - Alpha: 0.3
+    Class: rviz/PointCloud2
+    Color Transformer: FlatColor
+    Color: 60; 220; 100
+    Enabled: true
+    Name: Traversable Region
+    Size (Pixels): 3
+    Style: Points
+    Topic: /plan_map/free
+    Use Fixed Frame: true
+    Value: true
+  - Class: rviz/Marker
+    Name: Go2 Body Envelope
+    Enabled: true
+    Marker Topic: /dog_nav/footprint
+    Queue Size: 1
+    Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 32; 32; 36
+    Default Light: true
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+  - Class: rviz/Interact
+    Hide Inactive Objects: true
+  - Class: rviz/MoveCamera
+  - Class: rviz/Select
+  - Class: rviz/FocusCamera
+  - Class: rviz/Measure
+  - Class: dog_nav_rviz/Set3DInitialPose
+    Topic: /initialpose
+    X std deviation: 0.5
+    Y std deviation: 0.5
+    Z std deviation: 0.5
+    Theta std deviation: 0.2618
+  - Class: dog_nav_rviz/Set3DNavGoal
+    Topic: /move_base_simple/goal
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 18
+      Focal Point:
+        X: 1.8
+        Y: -3.6
+        Z: 0.2
+      Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.9
+      Target Frame: <Fixed Frame>
+      Yaw: 1.4
+    Saved: null
+Window Geometry:
+  Height: 1000
+  Width: 1600
+  X: 60
+  Y: 40

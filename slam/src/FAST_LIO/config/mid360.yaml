@@ -1,0 +1,51 @@
+common:
+    lid_topic:  "/livox/lidar"
+    imu_topic:  "/livox/imu"
+    time_sync_en: false         # ONLY turn on when external time synchronization is really not possible
+    time_offset_lidar_to_imu: -0.02189039 # Go2 LI-Init calibration, IMU to LiDAR time lag.
+    gravity_align_world: true    # Keep camera_init, saved PCD and TUM level with gravity.
+
+preprocess:
+    lidar_type: 1                # 1 for Livox serials LiDAR, 2 for Velodyne LiDAR, 3 for ouster LiDAR, 
+    scan_line: 32
+    blind: 0.5
+
+mapping:
+    acc_cov: 0.1
+    gyr_cov: 0.1
+    b_acc_cov: 0.0001
+    b_gyr_cov: 0.0001
+    fov_degree:    360
+    det_range:     100.0
+    extrinsic_est_en:  false      # true: enable the online estimation of IMU-LiDAR extrinsic
+    # Go2 LI-Init calibration: LiDAR point in the Mid360 IMU frame.
+    extrinsic_T: [ -0.024695, -0.013745, 0.016444 ]
+    extrinsic_R: [  0.999569817075, -0.028688641686,  0.006094475439,
+                    0.028657961463,  0.999576453050,  0.005063176084,
+                   -0.006237149787, -0.004886342749,  0.999968610316 ]
+
+
+
+publish:
+    path_en:  false
+    scan_publish_en:  true       # false: close all the point cloud output
+    dense_publish_en: true       # false: low down the points number in a global-frame point clouds scan.
+    scan_bodyframe_pub_en: true  # true: output the point cloud scans in IMU-body-frame
+
+pcd_save:
+    pcd_save_en: true
+    path: "PCD/scans.pcd"         # relative to the fast_lio package; absolute paths are also accepted
+    interval: -1                 # how many LiDAR frames saved in each pcd file; 
+                                 # -1 : all frames will be saved in ONE pcd file, may lead to memory crash when having too much frames.
+
+# 里程计相关参数（参考 GeoFlowSlam）
+odom:
+    use_wheel_odom: false         # 是否使用轮式里程计
+    odom_topic: "/go2/odom"   # 里程计话题名称
+    odom_weight: 0.1            # 里程计融合权重（0.0-1.0），建议0.1-0.2，值越大里程计影响越大
+    pos_noise_std: 0.03       # 里程计位置测量噪声标准差（单位：m），用于卡尔曼滤波
+    vel_noise_std: 0.05        # 里程计速度测量噪声标准差（单位：m/s），用于卡尔曼滤波
+    enable_lidar_update: true # 是否启用lidar测量更新（用于调试滤波融合），false=关闭lidar更新，只使用IMU+里程计
+    R_odom_to_imu: [ 1, 0, 0,    # 从里程计坐标系到IMU坐标系的旋转矩阵（行优先）
+                     0, 1, 0,
+                     0, 0, 1 ]

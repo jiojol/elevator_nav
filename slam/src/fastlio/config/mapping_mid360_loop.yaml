@@ -1,0 +1,95 @@
+map_frame: map
+local_frame: local
+body_frame: body
+# Same sensor topics as slam/src/FAST_LIO/config/mid360.yaml.
+imu_topic: /livox/imu
+livox_topic: /livox/lidar
+lidar_type: livox_custom
+# Go2 LI-Init: lidar stamp used for sync is header.stamp - this value.
+time_offset_lidar_to_imu: -0.02189039
+
+offline_mode: false
+offline_save_map: true
+
+global_map:
+  publish: true
+  keypose_interval: 30
+  resolution: 0.25
+
+pointcloud:
+  blind: 0.5
+  filter_num: 3
+
+hdl_tunnel:
+  directional_constraint: false
+
+odom:
+  use_wheel_odom: true
+  fuse_velocity: true
+  fuse_z_velocity: true
+  fuse_integrated_position: false
+  # /go2/odom.twist.angular copies the body gyro. Attitude stays on /livox/imu.
+  fuse_angular_velocity: false
+  # SportModeState.velocity is in the odometry frame, not the body frame.
+  velocity_in_body_frame: false
+  max_linear_speed: 3.0
+  max_angular_speed: 4.0
+  linear_deadband: 0.01
+  angular_deadband: 0.02
+  odom_topic: /go2/odom
+  R_odom_to_imu: [1, 0, 0,
+                  0, 1, 0,
+                  0, 0, 1]
+  pos_noise_std: 0.03
+  vel_noise_std: 0.05
+  rot_noise_std: 0.08
+  rot_innovation_gate: 0.05
+  z_pos_noise_std: 0.08
+  z_vel_noise_std: 0.08
+  use_orientation: false
+  # Stairs: do not flatten z.
+  planar: false
+  constrain_z: false
+  hard_constrain_z: false
+  debug: false
+
+local_rate: 20.0
+loop_rate: 1.0
+lio_builder:
+  det_range: 100.0
+  cube_len: 500.0
+  resolution: 0.2
+  move_thresh: 1.5
+  align_gravity: true
+  imu_acc_cov: 0.1
+  imu_gyro_cov: 0.1
+  imu_acc_bias_cov: 0.0001
+  imu_gyro_bias_cov: 0.0001
+  # Go2 LI-Init: LiDAR point in the Mid360 IMU frame.
+  imu_ext_rot: [0.999569817075, -0.028688641686, 0.006094475439,
+                0.028657961463,  0.999576453050, 0.005063176084,
+               -0.006237149787, -0.004886342749, 0.999968610316]
+  imu_ext_pos: [-0.024695, -0.013745, 0.016444]
+
+loop_closure:
+  activate: true
+  rad_thresh: 0.4
+  dist_thresh: 2.5
+  time_thresh: 30.0
+  loop_pose_search_radius: 10.0
+  loop_pose_index_thresh: 5
+  submap_resolution: 0.2
+  submap_search_num: 20
+  loop_icp_thresh: 0.3
+  loop_noise_scale: 1.0
+  loop_accept_interval: 30
+  force_final_to_start: false
+  final_loop_max_distance: 10.0
+
+keyframe:
+  store_clouds: true
+  cloud_resolution: 0.3
+
+save_map:
+  resolution: 0.1
+  max_voxels: 3000000

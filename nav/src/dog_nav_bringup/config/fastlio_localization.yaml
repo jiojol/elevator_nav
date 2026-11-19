@@ -1,0 +1,46 @@
+# FAST-LIO supplies continuous odometry; map registration only corrects map->odom.
+map_voxel_size: 0.20
+scan_voxel_size: 0.25
+obstacle_voxel_size: 0.05
+max_scan_range: 25.0
+submap_radius: 30.0
+# Startup may search a wider local neighborhood; tracking uses only nearby data.
+tracking_scan_range: 12.0
+tracking_submap_radius: 16.0
+submap_update_distance: 3.0
+pose_verification_period: 0.20
+pose_verification_max_points: 600
+registration_period: 1.0
+registration_threads: 2
+registration_iterations: 40
+min_scan_points: 150
+min_inlier_fraction: 0.50
+inlier_distance: 0.35
+max_inlier_rmse: 0.25
+# Reject a bad registration proposal without losing a still map-verified pose.
+# This check is stricter than the normal registration acceptance criteria.
+verified_pose_min_inlier_fraction: 0.60
+verified_pose_max_inlier_rmse: 0.20
+initial_max_translation: 2.0
+initial_max_rotation_deg: 45.0
+tracking_max_translation: 0.35
+tracking_max_rotation_deg: 6.0
+# A scan-verified map frame may differ from startup LIO gravity (recorded 5.5 deg).
+# Stronger overlap/RMSE and repeated agreement gate initialization; tracking
+# retains the existing 0.35 m / 6 deg correction limits and rate bounds.
+max_gravity_tilt_deg: 12.0
+initial_min_inlier_fraction: 0.65
+initial_max_inlier_rmse: 0.18
+initial_confirmations: 2
+initial_search_xy: 0.75
+initial_search_z: 0.50
+initial_search_yaw_deg: 25.0
+correction_linear_rate: 0.05
+correction_angular_rate_deg: 2.0
+global_match_timeout: 5.0
+input_timeout: 0.50
+max_local_speed: 3.0
+max_local_angular_speed: 3.0
+# Camera housing box, expressed in livox_frame (same as the HDL cloud adapter).
+camera_box_min: [-0.18, -0.04, -0.015]
+camera_box_max: [-0.03, 0.10, 0.075]

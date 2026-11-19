@@ -1,0 +1,23 @@
+# 仿真节点 (src/sim) 专用配置：
+# 点云为标准 sensor_msgs/PointCloud2 (仅 x, y, z)，使用 lidar_type: 2 的通用解析器；
+# 外参与 src/sim/config.jsonc 中 sensors.offset 保持一致。
+
+lidar_type: 2 # Livox = 1, Ouster = 2, Velodyne = 3, XT32 = 4
+
+offset:
+  imu_t_lidar: [ -0.011 , -0.02329, 0.04412] # IMU系下激光雷达的位置（与 config.jsonc 一致）
+  imu_R_lidar:
+    - [1.0, 0.0, 0.0]
+    - [0.0, 1.0, 0.0]
+    - [0.0, 0.0, 1.0]
+  lidar_t_body: [ 0 , 0, 0 ] # 仿真无车体，单位外参
+  lidar_R_body:
+    - [1.0, 0.0, 0.0]
+    - [0.0, 1.0, 0.0]
+    - [0.0, 0.0, 1.0]
+
+topic_sub:
+  lidar_topic_name: "/sim/lidar"
+  imu_topic_name: "/sim/imu"
+  wheel_topic_name: "/wheel_info" # 注意，轮速计话题的回调函数 receive_wheel 需要根据实际修改
+  elevator_flag_topic_name: "/LIO/set_elevator_flag"

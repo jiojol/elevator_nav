@@ -1,0 +1,60 @@
+# Global-map registration for Elevator-LIO odometry.
+# The map localizer publishes the unchanged navigation contract:
+#   map -> lio_odom -> base_link.
+input_odom_topic: /elevator_lio/odometry
+input_cloud_topic: /elevator_lio/cloud_body
+input_odom_frame: camera_init
+input_body_frame: body
+input_cloud_frame: body
+elevator_mode_enabled: true
+elevator_flag_topic: /elevator_lio/in_elevator
+
+map_frame: map
+odom_tf_frame: lio_odom
+robot_base_frame: base_link
+sensor_frame: livox_frame
+
+map_voxel_size: 0.20
+scan_voxel_size: 0.25
+obstacle_voxel_size: 0.05
+max_scan_range: 25.0
+submap_radius: 30.0
+tracking_scan_range: 12.0
+tracking_submap_radius: 16.0
+submap_update_distance: 3.0
+pose_verification_period: 0.20
+pose_verification_max_points: 600
+registration_period: 1.0
+registration_threads: 2
+registration_iterations: 40
+min_scan_points: 150
+min_inlier_fraction: 0.50
+inlier_distance: 0.35
+max_inlier_rmse: 0.25
+verified_pose_min_inlier_fraction: 0.60
+verified_pose_max_inlier_rmse: 0.20
+initial_max_translation: 2.0
+initial_max_rotation_deg: 45.0
+tracking_max_translation: 0.35
+tracking_max_rotation_deg: 6.0
+max_gravity_tilt_deg: 12.0
+initial_min_inlier_fraction: 0.65
+initial_max_inlier_rmse: 0.18
+initial_confirmations: 2
+initial_search_xy: 0.75
+initial_search_z: 0.50
+initial_search_yaw_deg: 25.0
+correction_linear_rate: 0.05
+correction_angular_rate_deg: 2.0
+global_match_timeout: 5.0
+input_timeout: 0.50
+max_local_speed: 3.0
+max_local_angular_speed: 3.0
+
+# T_IMU_LiDAR. Kept here explicitly so the localizer does not depend on a
+# simultaneously running Fast-LIO parameter namespace.
+imu_lidar_translation: [-0.011, -0.02329, 0.04412]
+imu_lidar_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+camera_box_min: [-0.18, -0.04, -0.015]
+camera_box_max: [-0.03, 0.10, 0.075]

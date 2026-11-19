@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="rviz_config" default="$(find dog_nav_bringup)/config/navigation_tum.rviz"/>
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config)"/>
+</launch>

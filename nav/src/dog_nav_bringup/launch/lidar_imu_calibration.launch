@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="imu_topic" default="/go2/imu"/>
+  <arg name="mean_acc_norm" default="9.805"/>
+  <group ns="lidar_mount_calibration">
+    <rosparam command="load" file="$(find lidar_imu_init)/config/mid360.yaml"/>
+    <param name="common/lid_topic" value="/livox/lidar"/>
+    <param name="common/imu_topic" value="$(arg imu_topic)"/>
+    <param name="initialization/mean_acc_norm" type="double" value="$(arg mean_acc_norm)"/>
+    <param name="preprocess/scan_line" type="int" value="32"/>
+    <param name="point_filter_num" type="int" value="2"/>
+    <param name="max_iteration" type="int" value="5"/>
+    <param name="cube_side_length" type="double" value="2000"/>
+    <node pkg="lidar_imu_init" type="li_init" name="laserMapping" output="screen" required="true">
+      <remap from="/tf" to="/lidar_mount_calibration/tf"/>
+      <remap from="/Odometry" to="/lidar_mount_calibration/odometry"/>
+      <remap from="/aft_mapped_to_init" to="/lidar_mount_calibration/aft_mapped_to_init"/>
+      <remap from="/livox/imu/async" to="/lidar_mount_calibration/imu_sync"/>
+      <remap from="/path" to="/lidar_mount_calibration/path"/>
+      <remap from="/cloud_registered" to="/lidar_mount_calibration/cloud_registered"/>
+      <remap from="/cloud_registered_body" to="/lidar_mount_calibration/cloud_body"/>
+      <remap from="/cloud_effected" to="/lidar_mount_calibration/cloud_effected"/>
+      <remap from="/Laser_map" to="/lidar_mount_calibration/map"/>
+    </node>
+  </group>
+</launch>

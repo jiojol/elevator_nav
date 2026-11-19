@@ -1,0 +1,9 @@
+# Unitree stock Go2 reference geometry; positions are meters, quaternion is XYZW.
+# Project base_link/base_imu correspond to official base/imu respectively.
+parent_frame: base_link
+child_frame: base_imu
+imu_topic: /go2/imu
+translation: [-0.02557, 0.0, 0.04232]
+rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+source_urdf: https://github.com/unitreerobotics/unitree_ros/blob/master/robots/go2_description/urdf/go2_description.urdf
+source_mujoco: https://github.com/unitreerobotics/unitree_mujoco/blob/main/unitree_robots/go2/go2.xml

@@ -1,0 +1,14 @@
+<launch>
+  <arg name="output"/>
+  <arg name="start_lidar" default="true"/>
+  <arg name="duration" default=""/>
+  <arg name="duration_option" value="$(eval '--duration=' + str(arg('duration')) if arg('duration') else '')"/>
+
+  <include file="$(find dog_nav_bringup)/launch/lidar.launch" if="$(arg start_lidar)">
+    <arg name="driver_launch" value="msg_MID360.launch"/>
+    <arg name="xfer_format" value="1"/>
+  </include>
+
+  <node pkg="rosbag" type="record" name="elevator_sensor_recorder" output="screen"
+        required="true" args='$(arg duration_option) -O "$(arg output)" /livox/lidar /livox/imu'/>
+</launch>

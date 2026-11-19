@@ -1,0 +1,6 @@
+interface: eth0
+max_linear_x: 0.75
+max_linear_y: 0.35
+max_angular_z: 1.00
+command_timeout: 0.30
+auto_enable: true

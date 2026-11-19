@@ -1,0 +1,14 @@
+{
+  "upstream_commit": "348e8a590a50a5a6bbab8d8c6dcfd171f009be26",
+  "purpose": "Source provenance for the prior-map local planner; learning extension removed, upstream mathematical core retained",
+  "identical_native_files": {
+    "bspline_opt/src/uniform_bspline.cpp": "f3be77162ef6a331bcc04f5e800ddaf780daab6ee33441df1d9b84a6e1366598",
+    "bspline_opt/include/bspline_opt/uniform_bspline.h": "90a8474bdae3ce802cab7f7f219d8c876a269140d417161078ac4bb21deec452",
+    "plan_env/src/raycast.cpp": "0d5d4dd09f006a22857d023935267108cb1dbc27c45a59200d992f05eea8aa41",
+    "plan_env/include/plan_env/raycast.h": "9a46cf4a0bb177bcd9fce229001a623dff11c55e65eeb32eba3d4209771e2a9b",
+    "traj_utils/src/polynomial_traj.cpp": "c2b7c24bf2ba04248e520357e1eb8d65bf5d667cadf9cbf6dba9355e909cbe1a",
+    "traj_utils/include/traj_utils/polynomial_traj.h": "463e4d32955d90740eae2ec8fed48c2d3b031a4f23521f0992deb1bc164ab386",
+    "bspline_opt/src/bspline_optimizer.cpp": "1e520f7c259f37fb0f0024ea75ac7392dbcdac890cd8aa5443f1b835a0e9bd79",
+    "bspline_opt/include/bspline_opt/bspline_optimizer.h": "edf2febd9d621e40f4e4e424d41a98dd88b0586d576edcf89bc2616ce30b8465"
+  }
+}

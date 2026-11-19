@@ -1,0 +1,16 @@
+<library path="lib/libdog_nav_rviz_plugins">
+  <class name="dog_nav_rviz/Set3DInitialPose"
+         type="dog_nav_rviz::Init3DTool"
+         base_class_type="rviz::Tool">
+    <description>
+      3D Pose Estimate：按下取点（吸附可通行体素图，含高度），拖动设朝向，滚轮改高度，松开发布到 /initialpose。
+    </description>
+  </class>
+  <class name="dog_nav_rviz/Set3DNavGoal"
+         type="dog_nav_rviz::Goal3DTool"
+         base_class_type="rviz::Tool">
+    <description>
+      3D Nav Goal：按下取点（吸附可通行体素图，含高度），拖动设朝向，滚轮改高度，松开发布到 /move_base_simple/goal。
+    </description>
+  </class>
+</library>

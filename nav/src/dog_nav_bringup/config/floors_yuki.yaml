@@ -1,0 +1,9 @@
+# Ground support levels in the yuki FREE map frame, in meters.
+initial_floor: floor1
+floors:
+  floor1:
+    height_z: -33.3
+  floor2:
+    height_z: -11.1
+  floor3:
+    height_z: -0.4

@@ -1,0 +1,32 @@
+{
+  "traj": "/home/unitree/ws_elevator_lio_ros1/src/lio/traj.tum",
+  "mode_log": "/home/unitree/ws_elevator_lio_ros1/src/lio/temp/2026-11-18_20-37-31/debug/elevator_debug.csv",
+  "free_pcd": "dog_free.pcd",
+  "path_tum": "dog_path.tum",
+  "resolution": 0.2,
+  "half_width": 0.5,
+  "pose_stride": 0.1,
+  "z_offset": -0.4,
+  "normal_segments": 4,
+  "min_segment_poses": 3,
+  "raw_poses": 4311,
+  "normal_poses": 666,
+  "path_length_m": 82.66119618398389,
+  "elevator_intervals": [
+    [
+      1794980521.427714,
+      1794980535.127552
+    ],
+    [
+      1794980762.928181,
+      1794980783.128567
+    ],
+    [
+      1794980816.92875,
+      1794980843.2287
+    ]
+  ],
+  "free_voxels": 2102,
+  "z_min": -33.312567,
+  "z_max": -0.31567
+}

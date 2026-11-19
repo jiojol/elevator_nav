@@ -1,0 +1,179 @@
+{
+  "matrix_process_exit_code": 0,
+  "trial_count": 9,
+  "scope": "batch queue and error-reporting verification; navigation failures retained",
+  "trials": [
+    {
+      "folder": "native_blocking_then_clear",
+      "case": "blocking_then_clear",
+      "mode": "native",
+      "result": "timeout",
+      "duration_sim": 45.003999999996815,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 57,
+        "position_reached": 1,
+        "position_lost": 0,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "02114e2019780e2536baf59b00af19a4fe530d907a3aba86714317809aea14e9"
+    },
+    {
+      "folder": "native_door_055",
+      "case": "door_055",
+      "mode": "native",
+      "result": "timeout",
+      "duration_sim": 35.00000000000236,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 105,
+        "position_reached": 0,
+        "position_lost": 0,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "9aabd6b8f380469b08e6197e1dd98ae8cc04bc999020b64a0ca00cc9fc6b7908"
+    },
+    {
+      "folder": "native_door_065",
+      "case": "door_065",
+      "mode": "native",
+      "result": "timeout",
+      "duration_sim": 35.00000000000236,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 1364,
+        "position_reached": 0,
+        "position_lost": 0,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "347ebf8e26ac629feaf8d9b2a2163af364ef96cd8c46073ed128d6b441b3c800"
+    },
+    {
+      "folder": "native_dynamic_crossing",
+      "case": "dynamic_crossing",
+      "mode": "native",
+      "result": "fell",
+      "duration_sim": 7.5239999999996146,
+      "counts": {
+        "body_contacts": 176,
+        "obstacle_contacts": 210,
+        "position_reached": 0,
+        "position_lost": 0,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "7627b8793a8074cac58a85eec6825b3e94c641cf8be19b59e0c65e0e83c8dbc1"
+    },
+    {
+      "folder": "native_final_yaw",
+      "case": "final_yaw",
+      "mode": "native",
+      "result": "reached",
+      "duration_sim": 26.108000000002058,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 0,
+        "position_reached": 1,
+        "position_lost": 0,
+        "goals_reached": 1,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "3ab4ed3019fa39b49eaf381b4f614fa77e34f1c9924db672b302bc651c3bee26"
+    },
+    {
+      "folder": "native_large_obstacle",
+      "case": "large_obstacle",
+      "mode": "native",
+      "result": "reached",
+      "duration_sim": 29.908000000003327,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 0,
+        "position_reached": 2,
+        "position_lost": 1,
+        "goals_reached": 1,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "07a333a190990916364f656f2e18b0761a62ed279ae547beed036bea040e153e"
+    },
+    {
+      "folder": "native_stairs",
+      "case": "stairs",
+      "mode": "native",
+      "result": "recovery_limit",
+      "duration_sim": 38.308000000000526,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 0,
+        "position_reached": 3,
+        "position_lost": 3,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "da4dcb2d7f5881c604d494af6b30bb4e037202d97bc6bea5147e1c72cbdb7d43"
+    },
+    {
+      "folder": "native_straight",
+      "case": "straight",
+      "mode": "native",
+      "result": "reached",
+      "duration_sim": 13.063999999999005,
+      "counts": {
+        "body_contacts": 0,
+        "obstacle_contacts": 0,
+        "position_reached": 1,
+        "position_lost": 0,
+        "goals_reached": 1,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "6e49997e877b23acdf896afa70d4260868b0b92933e5de554287216c4fe458f0"
+    },
+    {
+      "folder": "untrained_dynamic_crossing",
+      "case": "dynamic_crossing",
+      "mode": "untrained",
+      "result": "fell",
+      "duration_sim": 7.863999999999577,
+      "counts": {
+        "body_contacts": 223,
+        "obstacle_contacts": 247,
+        "position_reached": 0,
+        "position_lost": 0,
+        "goals_reached": 0,
+        "goals_failed": 0,
+        "learned_guides": 0
+      },
+      "execution": "local_only",
+      "master": "http://127.0.0.1:11791",
+      "result_sha256": "ebdd3661470e57bbbd5f1cd2e4bd1d7559785ff50eeba014cf05b183a69f6535"
+    }
+  ],
+  "queue_test_log": "等待仿真空闲：queue_validation / native，PID 103227，输出 short local queue check（最多等待 180 秒）\n仿真资源已空闲，开始本次任务。\n本机仿真已启动：straight / native，输出：/home/xzq/文档/ChatGPT/xie zq/replan_in_global_map/simulation/artifacts/matrix_queue_verified_20261028/native_straight\n"
+}

@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="max_vel" default="0.75"/>
+  <arg name="elevator_config" default=""/>
+  <arg name="elevator_speed_limit" default="0.20"/>
+  <arg name="elevator_ingress_speed_limit" default="$(arg max_vel)"/>
+  <arg name="max_acc" default="0.50"/>
+  <arg name="max_lateral" default="0.35"/>
+  <arg name="max_yaw" default="1.00"/>
+  <arg name="body_height" default="0.50"/>
+  <arg name="point_radius" default="0.20"/>
+  <arg name="point_separation" default="0.36"/>
+  <arg name="path_z_offset" default="0.0"/>
+  <param name="body_pose_topic" value="/scan_upstream/body_odometry" type="str"/>
+  <node pkg="tf2_ros" type="static_transform_publisher" name="scan_visual_frame"
+        args="0 0 0 0 0 0 1 map world"/>
+  <include file="$(find scan_upstream_planner)/launch/advanced_param.xml">
+    <arg name="is_real_world" value="true"/>
+    <arg name="navi_mode" value="3"/>
+    <arg name="sensor_type" value="lidar"/>
+    <arg name="body_pose_topic" value="/scan_upstream/body_odometry"/>
+    <arg name="sensor_pose_topic" value="/dog_nav/sensor_pose"/>
+    <arg name="cloud_topic" value="/scan_upstream/cloud"/>
+    <arg name="cloud_is_world" value="true"/>
+    <arg name="depth_topic" value="/unused_depth"/>
+    <arg name="cx" value="317.19183349609375"/>
+    <arg name="cy" value="256.4806823730469"/>
+    <arg name="fx" value="609.5884399414062"/>
+    <arg name="fy" value="609.22021484375"/>
+    <arg name="max_vel" value="$(arg max_vel)"/>
+    <arg name="max_acc" value="$(arg max_acc)"/>
+    <arg name="planning_horizon" value="3.5"/>
+  </include>
+  <!-- Sensor pose is already the calibrated lidar pose in map: never apply
+       upstream's example mounting extrinsic a second time. -->
+  <param name="scan_upstream_planner_node/grid_map/need_extrinsic" value="false" type="bool"/>
+  <param name="scan_upstream_planner_node/grid_map/double_cylinder_radius" value="$(arg point_radius)"/>
+  <param name="scan_upstream_planner_node/grid_map/double_cylinder_offset" value="$(eval .5 * float(arg('point_separation')))"/>
+  <param name="scan_upstream_planner_node/grid_map/body_height" value="$(arg body_height)"/>
+  <param name="closed_loop_controller/max_vy" value="$(arg max_lateral)"/>
+  <param name="closed_loop_controller/max_vyaw" value="$(arg max_yaw)"/>
+  <node pkg="scan_upstream_planner" type="closed_loop_controller" name="closed_loop_controller"
+        required="true" output="screen">
+    <remap from="cmd_vel" to="/planning/scan_upstream_cmd_vel"/>
+  </node>
+  <node pkg="scan_upstream_planner" type="upstream_io.py" name="scan_upstream_io"
+        required="true" output="screen">
+    <rosparam command="load" file="$(arg elevator_config)" if="$(eval arg('elevator_config') != '')"/>
+    <param name="elevator_speed_limit" value="$(arg elevator_speed_limit)" type="double"/>
+    <param name="elevator_ingress_speed_limit" value="$(arg elevator_ingress_speed_limit)" type="double"/>
+    <param name="body_height" value="$(arg body_height)"/>
+  </node>
+  <node pkg="dog_nav_bringup" type="reference_path_transform" name="reference_path_transform"
+        required="true" output="screen">
+    <remap from="input" to="/plan_map/global_path"/>
+    <remap from="output" to="/initial_path"/>
+    <param name="target_frame" value="map"/>
+    <param name="z_offset" value="$(eval -float(arg('body_height')) - float(arg('path_z_offset')))"/>
+    <param name="body_height" value="$(arg body_height)"/>
+    <param name="odom_topic" value="/dog_nav/odometry"/>
+    <param name="reference_offset_x" value="0.0"/>
+    <param name="reference_offset_y" value="0.0"/>
+  </node>
+</launch>

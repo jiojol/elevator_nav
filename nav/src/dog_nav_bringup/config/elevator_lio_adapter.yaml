@@ -1,0 +1,19 @@
+# Elevator-LIO ROS 1 topic contract.
+# Keep this adapter in dog_nav_bringup so navigation does not compile against
+# Elevator-LIO's custom message package.
+odom_topic: /LIO/odom_imu
+cloud_topic: /LIO/clouds_lidar/effect
+elevator_flag_topic: /LIO/in_elevator
+
+output_odom_topic: /elevator_lio/odometry
+output_cloud_topic: /elevator_lio/cloud_body
+output_elevator_flag_topic: /elevator_lio/in_elevator
+output_odom_frame: camera_init
+output_body_frame: body
+
+sync_queue_size: 30
+elevator_flag_latched: true
+
+# T_IMU_LiDAR, matching the calibrated MID-360 mount in sensors/livox.yaml.
+imu_lidar_translation: [-0.011, -0.02329, 0.04412]
+imu_lidar_rotation: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]

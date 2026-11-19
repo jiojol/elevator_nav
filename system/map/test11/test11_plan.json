@@ -1,0 +1,28 @@
+{
+  "traj": "test11.tum",
+  "mode_log": "test11_elevator_debug.csv",
+  "free_pcd": "test11_free.pcd",
+  "path_tum": "test11_path.tum",
+  "resolution": 0.2,
+  "half_width": 0.5,
+  "pose_stride": 0.1,
+  "z_offset": -0.4,
+  "normal_segments": 3,
+  "min_segment_poses": 3,
+  "raw_poses": 1542,
+  "normal_poses": 267,
+  "path_length_m": 33.67215226283989,
+  "elevator_intervals": [
+    [
+      1794978818.446201,
+      1794978830.546304
+    ],
+    [
+      1794978866.246562,
+      1794978878.146654
+    ]
+  ],
+  "free_voxels": 909,
+  "z_min": -0.5111600000000001,
+  "z_max": 6.849577
+}

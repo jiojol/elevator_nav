@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="map_frame" default="map"/>
+  <arg name="body_pose_topic" default="/dog_nav/odometry"/>
+  <arg name="cloud_topic" default="/navigation/obstacle_points"/>
+  <arg name="sensor_pose_topic" default="/dog_nav/sensor_pose"/>
+  <arg name="cloud_is_world" default="true"/>
+  <arg name="max_vel" default="0.80"/>
+  <arg name="max_acc" default="0.50"/>
+  <arg name="max_yaw" default="0.80"/>
+  <arg name="planning_horizon" default="3.5"/>
+  <!-- Native SCAN dynamic-obstacle geometry, separate from the prior mask. -->
+  <arg name="double_cylinder_radius" default="0.225"/>
+  <arg name="double_cylinder_offset" default="0.18"/>
+  <arg name="body_height" default="0.40"/>
+  <!-- Planar body-center offset from the input pose, in its heading axes. -->
+  <arg name="footprint_reference_x" default="0.0"/>
+  <arg name="footprint_reference_y" default="0.0"/>
+  <!-- Body-height input by default; navigation.launch also removes TUM display clearance. -->
+  <arg name="z_offset" default="$(eval -float(arg('body_height')))"/>
+  <arg name="global_path_topic" default="/plan_map/global_path"/>
+
+  <rosparam command="load" file="$(find dog_nav_bringup)/config/go2_geometry.yaml" ns="/dog_nav/geometry"/>
+  <!-- Plan and track the measured body XY, not a heading-dependent lidar XY. -->
+  <param name="/dog_nav/geometry/reference_offset_x" value="0.0" type="double"/>
+  <param name="/dog_nav/geometry/reference_offset_y" value="0.0" type="double"/>
+  <param name="scan_planner_node/grid_map/footprint_model" value="double_cylinder"/>
+  <param name="scan_planner_node/grid_map/require_plan_free" value="true" type="bool"/>
+  <param name="scan_planner_node/grid_map/plan_height_tolerance" value="0.30"/>
+  <param name="body_pose_topic" value="/planning/body_odometry" type="str"/>
+  <!-- Upstream trajectory markers use world; numerical coordinates are map. -->
+  <node pkg="tf2_ros" type="static_transform_publisher" name="scan_visual_frame"
+        if="$(eval arg('map_frame') != 'world')"
+        args="0 0 0 0 0 0 1 $(arg map_frame) world"/>
+
+  <include file="$(find scan_planner)/launch/advanced_param.xml">
+    <arg name="is_real_world" value="true"/>
+    <arg name="navi_mode" value="3"/>
+    <arg name="sensor_type" value="lidar"/>
+    <arg name="body_pose_topic" value="/planning/body_odometry"/>
+    <arg name="sensor_pose_topic" value="$(arg sensor_pose_topic)"/>
+    <arg name="cloud_topic" value="$(arg cloud_topic)"/>
+    <arg name="cloud_is_world" value="$(arg cloud_is_world)"/>
+    <arg name="depth_topic" value="/camera/aligned_depth_to_color/image_raw"/>
+    <arg name="cx" value="317.19183349609375"/>
+    <arg name="cy" value="256.4806823730469"/>
+    <arg name="fx" value="609.5884399414062"/>
+    <arg name="fy" value="609.22021484375"/>
+    <arg name="max_vel" value="$(arg max_vel)"/>
+    <arg name="max_acc" value="$(arg max_acc)"/>
+    <arg name="planning_horizon" value="$(arg planning_horizon)"/>
+  </include>
+
+  <param name="scan_planner_node/grid_map/frame_id" value="$(arg map_frame)"/>
+  <param name="scan_planner_node/grid_map/need_extrinsic" value="false"/>
+  <!-- /dog_nav/odometry follows nav_msgs/Odometry: twist is in base_link. -->
+  <param name="scan_planner_node/fsm/odom_twist_in_body_frame" value="true"/>
+  <param name="scan_planner_node/grid_map/double_cylinder_radius" value="$(arg double_cylinder_radius)"/>
+  <param name="scan_planner_node/grid_map/double_cylinder_offset" value="$(arg double_cylinder_offset)"/>
+  <param name="scan_planner_node/grid_map/body_height" value="$(arg body_height)"/>
+  <rosparam command="load" file="$(find dog_nav_bringup)/config/prior_local.yaml"/>
+  <param name="closed_loop_controller/max_vyaw" value="$(arg max_yaw)"/>
+  <param name="scan_command_gate/turn_max_speed" value="$(eval min(0.40, float(arg('max_yaw'))))"/>
+  <param name="scan_command_gate/turn_min_speed" value="$(eval min(0.15, float(arg('max_yaw'))))"/>
+  <param name="scan_command_gate/start_turn_max_speed" value="$(eval min(0.50, float(arg('max_yaw'))))"/>
+
+
+  <node pkg="scan_planner" name="closed_loop_controller" type="closed_loop_controller" output="screen">
+    <remap from="cmd_vel" to="/planning/scan_cmd_vel"/>
+  </node>
+  <node pkg="dog_nav_bringup" name="scan_command_gate" type="scan_command_gate.py" output="screen" required="true">
+    <param name="odom_topic" value="/planning/body_odometry"/>
+    <param name="cloud_topic" value="$(arg cloud_topic)"/>
+    <param name="map_frame" value="$(arg map_frame)"/>
+    <param name="body_height" value="$(arg body_height)"/>
+  </node>
+
+  <node pkg="dog_nav_bringup" type="reference_path_transform" name="reference_path_transform" output="screen" required="true">
+    <remap from="input" to="$(arg global_path_topic)"/>
+    <remap from="output" to="/initial_path"/>
+    <param name="target_frame" value="$(arg map_frame)"/>
+    <param name="z_offset" value="$(arg z_offset)"/>
+    <param name="body_height" value="$(arg body_height)"/>
+    <param name="odom_topic" value="$(arg body_pose_topic)"/>
+    <param name="reference_offset_x" value="$(arg footprint_reference_x)"/>
+    <param name="reference_offset_y" value="$(arg footprint_reference_y)"/>
+  </node>
+</launch>

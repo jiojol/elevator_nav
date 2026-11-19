@@ -1,0 +1,31 @@
+initial_floor: floor1
+global_frame: map
+robot_base_frame: base_link
+goal_xy_tolerance: 0.35
+goal_z_tolerance: 0.40
+goal_timeout: 600.0
+tf_ready_timeout: 45.0
+snap_xy_radius: 1.0
+snap_z_tolerance: 0.75
+max_layer_attempts: 32
+vis_stride: 1
+
+floors:
+  floor1:
+    height_z: 0.2
+    goal_topic: /map1/goal
+  floor2:
+    height_z: 4.2
+    goal_topic: /map2/goal
+  floor3:
+    height_z: 8.2
+    goal_topic: /map3/goal
+  floor4:
+    height_z: 12.2
+    goal_topic: /map4/goal
+  floor5:
+    height_z: 16.2
+    goal_topic: /map5/goal
+  floor6:
+    height_z: 20.2
+    goal_topic: /map6/goal

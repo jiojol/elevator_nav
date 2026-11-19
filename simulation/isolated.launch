@@ -1,0 +1,10 @@
+<launch>
+  <!-- Test-only: no Livox hardware, Unitree bridge, DDS or FAST-LIO process. -->
+  <arg name="body_height" default="0.40"/>
+  <param name="/plan_map/resolution" value="0.20"/>
+  <include file="$(find dog_nav_bringup)/launch/prior_local.launch">
+    <arg name="body_height" value="$(arg body_height)"/>
+    <arg name="footprint_reference_x" value="-0.221454"/>
+    <arg name="footprint_reference_y" value="-0.018929"/>
+  </include>
+</launch>

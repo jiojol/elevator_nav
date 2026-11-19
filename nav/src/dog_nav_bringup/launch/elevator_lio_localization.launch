@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="globalmap_pcd" default="$(find dog_nav_bringup)/../../../system/map/dog.pcd"/>
+  <arg name="map_only" default="false"/>
+  <arg name="start_lidar" default="true"/>
+  <arg name="use_calibrated_mount" default="false"/>
+
+  <include file="$(find dog_nav_bringup)/launch/lidar.launch" if="$(arg start_lidar)">
+    <arg name="driver_launch" value="msg_MID360.launch"/>
+    <arg name="xfer_format" value="1"/>
+    <arg name="use_calibrated_mount" value="$(arg use_calibrated_mount)"/>
+  </include>
+
+  <!-- Elevator-LIO itself is launched from its own ROS 1 workspace. The adapter
+       normalizes its topics and frames without linking against its custom msgs. -->
+  <node pkg="dog_nav_bringup" type="elevator_lio_adapter"
+        name="elevator_lio_adapter" output="screen" required="true" unless="$(arg map_only)">
+    <rosparam command="load" file="$(find dog_nav_bringup)/config/elevator_lio_adapter.yaml"/>
+  </node>
+
+  <!-- Keep the existing output topics and TF roles used by SCAN and FREE. -->
+  <node pkg="dog_nav_bringup" type="fastlio_map_localizer"
+        name="lio_map_localizer" output="screen" required="true">
+    <remap from="/initialpose" to="/lio_map_localizer/unused_initialpose" if="$(arg map_only)"/>
+    <rosparam command="load" file="$(find dog_nav_bringup)/config/elevator_lio_localization.yaml"/>
+    <param name="globalmap_pcd" value="$(arg globalmap_pcd)"/>
+  </node>
+</launch>

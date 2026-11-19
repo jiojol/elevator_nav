@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="globalmap_pcd" default="$(find dog_nav_bringup)/../../../system/map/dog.pcd"/>
+  <arg name="planner_backend" default="free"/>
+  <arg name="localization_backend" default="fastlio"/>
+  <arg name="plan_meta" default="$(find dog_nav_bringup)/../../../system/map/dog_plan.json"/>
+  <arg name="start_lidar" default="true"/>
+  <arg name="use_calibrated_mount" default="false"/>
+  <arg name="planning_only" default="$(eval 'true' if str(arg('start_lidar')).lower() in ('0', 'false', 'no') else 'false')"/>
+  <arg name="start_rviz" default="true"/>
+  <arg name="start_goal_queue" default="false"/>
+  <arg name="loop_nav" default="false"/>
+  <arg name="loop_pause" default="0.5"/>
+  <arg name="rviz_config" default="$(find dog_nav_bringup)/config/navigation_free.rviz"/>
+  <arg name="scan_max_vel" default="0.80"/>
+  <arg name="scan_max_acc" default="0.50"/>
+  <arg name="scan_max_yaw" default="0.80"/>
+  <arg name="scan_body_height" default="0.40"/>
+  <arg name="scan_path_z_offset" default="0.0"/>
+
+  <include file="$(find dog_nav_bringup)/launch/fastlio_localization.launch"
+           unless="$(arg planning_only)">
+    <arg name="globalmap_pcd" value="$(arg globalmap_pcd)"/>
+    <arg name="start_lidar" value="$(arg start_lidar)"/>
+    <arg name="use_calibrated_mount" value="$(arg use_calibrated_mount)"/>
+  </include>
+
+
+  <include file="$(find dog_nav_bringup)/launch/prior_local.launch" unless="$(arg planning_only)">
+    <arg name="max_vel" value="$(arg scan_max_vel)"/>
+    <arg name="max_acc" value="$(arg scan_max_acc)"/>
+    <arg name="max_yaw" value="$(arg scan_max_yaw)"/>
+    <arg name="body_height" value="$(arg scan_body_height)"/>
+    <!-- Legacy navigation pose is the lidar reference. Translate the horizontal
+         envelope to the body center without changing this map/route contract.
+         Calibrated body-pose mode has already applied this translation. -->
+    <arg name="footprint_reference_x" value="$(eval 0.0 if str(arg('use_calibrated_mount')).lower() in ('true', '1') else -0.221454)"/>
+    <arg name="footprint_reference_y" value="$(eval 0.0 if str(arg('use_calibrated_mount')).lower() in ('true', '1') else -0.018929)"/>
+    <!-- Convert the body reference path back to ground-surface input. -->
+    <arg name="z_offset" value="$(eval -float(arg('scan_body_height')) - float(arg('scan_path_z_offset')))"/>
+    <arg name="global_path_topic" value="/plan_map/global_path"/>
+  </include>
+
+
+  <include file="$(find map_for_plan)/launch/plan.launch">
+    <arg name="loop_nav" value="$(arg loop_nav)"/>
+    <arg name="loop_pause" value="$(arg loop_pause)"/>
+    <arg name="meta" value="$(arg plan_meta)"/>
+    <arg name="body_height" value="$(arg scan_body_height)"/>
+    <arg name="path_z_offset" value="$(arg scan_path_z_offset)"/>
+    <!-- The external command gate acknowledges measured position + final yaw. -->
+    <arg name="planning_only" value="$(arg planning_only)"/>
+  </include>
+
+  <include file="$(find dog_nav_bringup)/launch/visualization.launch" if="$(arg start_rviz)">
+    <arg name="rviz_config" value="$(arg rviz_config)"/>
+  </include>
+</launch>

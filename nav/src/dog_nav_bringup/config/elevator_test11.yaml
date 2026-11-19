@@ -1,0 +1,16 @@
+# Candidate elevator poses derived from go2_mid360_test11.bag.
+# The pose is the body/ground reference used by the FREE graph on each floor.
+elevator:
+  id: E1
+  configured: true
+  door_width: 1.0
+  door_height: 2.2
+  floors:
+    floor1:
+      lobby_pose: [6.700, -5.709, -0.40, 3.122]
+      door_center_xy: [5.314, -5.709]
+      inside_pose: [4.728, -5.709, -0.40, 3.122]
+    floor2:
+      lobby_pose: [6.700, -5.478, 6.85, -3.039]
+      door_center_xy: [5.1415, -5.478]
+      inside_pose: [4.533, -5.478, 6.85, -3.039]

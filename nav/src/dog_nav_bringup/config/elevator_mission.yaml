@@ -1,0 +1,11 @@
+body_height: 0.40
+odom_timeout: 0.60
+door_settle_s: 0.50
+exit_door_confirm_s: 1.0
+door_open_timeout_s: 180.0
+door_plan_timeout_s: 30.0
+elevator_timeout_s: 300.0
+require_tracking: true
+accept_move_base_goal: true
+frame_id: map
+door_open_topic: /elevator/door_open

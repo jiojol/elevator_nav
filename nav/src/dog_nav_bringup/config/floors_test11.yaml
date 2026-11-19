@@ -1,0 +1,20 @@
+# Local test11 smoke-test floor configuration.
+initial_floor: floor1
+global_frame: map
+robot_base_frame: base_link
+goal_xy_tolerance: 0.35
+goal_z_tolerance: 0.40
+goal_timeout: 600.0
+tf_ready_timeout: 45.0
+snap_xy_radius: 1.0
+snap_z_tolerance: 0.75
+max_layer_attempts: 32
+vis_stride: 1
+
+floors:
+  floor1:
+    height_z: -0.40
+    goal_topic: /map1/goal
+  floor2:
+    height_z: 6.85
+    goal_topic: /map2/goal

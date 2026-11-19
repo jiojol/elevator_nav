@@ -1,0 +1,17 @@
+# Single-elevator site configuration for multi-floor navigation.
+# Fill inside_pose after surveying the actual cabin. The pose is in the global
+# `map` frame; z is the floor support height used by the FREE graph, yaw faces
+# the desired in-cabin heading. Until configured=true, cross-floor missions are
+# rejected instead of silently planning to a placeholder.
+elevator:
+  id: E1
+  configured: false
+  door_width: 1.0
+  door_height: 2.2
+  floors:
+    floor1:
+      lobby_pose: [0.0, 0.0, 0.2, 0.0]
+      inside_pose: [0.0, 0.0, 0.2, 0.0]
+    floor2:
+      lobby_pose: [0.0, 0.0, 4.2, 0.0]
+      inside_pose: [0.0, 0.0, 4.2, 0.0]
