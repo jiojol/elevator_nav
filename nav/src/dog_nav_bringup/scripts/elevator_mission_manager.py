@@ -29,6 +29,8 @@ TRACK_SINGLE = "TRACK_SINGLE"
 TRACK_LEG1 = "TRACK_LEG1"
 WAIT_DOOR_OUTSIDE = "WAIT_DOOR_OUTSIDE"
 TRACK_INGRESS = "TRACK_INGRESS"
+ALIGN_CABIN = "ALIGN_CABIN"
+ALIGN_EXIT = "ALIGN_EXIT"
 WAIT_ELEVATOR_MODE = "WAIT_ELEVATOR_MODE"
 ELEVATOR_TRANSIT = "ELEVATOR_TRANSIT"
 WAIT_DOOR_OPEN = "WAIT_DOOR_OPEN"
@@ -108,6 +110,8 @@ def build_mission_legs(floors: Dict[str, dict], elevator: dict,
         raise ValueError("elevator poses are not configured")
     lobby, lobby_yaw = _lobby_pose(elevator, start_floor)
     inside, inside_yaw = _inside_pose(elevator, start_floor)
+    if elevator.get("align_exit_yaw", False):
+        inside_yaw = lobby_yaw
     # The destination anchor is not sent as a goal, but its presence validates
     # that this elevator serves the requested target floor. The second A* leg
     # starts from the measured pose after the door opens.
@@ -165,6 +169,8 @@ class ElevatorMissionManager:
         self.legs: List[MissionLeg] = []
         self.leg_index = 0
         self.active_segment_stamp = rospy.Time()
+        self.cabin_alignment_stamp = rospy.Time()
+        self.cabin_alignment_started_at = None
         self.latest_odom: Optional[Odometry] = None
         self.latest_odom_receipt = 0.0
         self.localization_status = ""
@@ -215,6 +221,7 @@ class ElevatorMissionManager:
             self.on_door_status, queue_size=1)
         rospy.Subscriber("/planning/goal_reached", Header,
                          self.on_goal_reached, queue_size=10)
+        rospy.Subscriber("/elevator_nav/cabin_aligned", Header, self.on_cabin_aligned, queue_size=1)
         rospy.Subscriber("/map_manager/result", String,
                          self.on_planner_result, queue_size=10)
         self.timer = rospy.Timer(rospy.Duration(0.10), self.on_timer)
@@ -298,6 +305,8 @@ class ElevatorMissionManager:
             "state": self.state,
             "message": self.message,
             "current_floor": self.display_floor(),
+            "alignment_floor": self.start_floor if self.state == ALIGN_CABIN else self.target_floor,
+            "alignment_stamp_ns": self.cabin_alignment_stamp.to_nsec() if self.state in (ALIGN_CABIN, ALIGN_EXIT) else 0,
             "target_floor": self.target_floor,
             "elevator_id": str(self.elevator.get("id", "")),
             "stamp": rospy.Time.now().to_sec(),
@@ -403,12 +412,13 @@ class ElevatorMissionManager:
         first_kind = self.legs[0].kind
         if getattr(self, "preview_routes", False) and first_kind == "LOBBY":
             ingress = self.legs[1]
-            destination_cabin, _ = _inside_pose(self.elevator, self.target_floor)
-            # Assume the cabin carries the robot without turning it.
+            destination_cabin, exit_yaw = _inside_pose(self.elevator, self.target_floor)
+            if not self.elevator.get("align_exit_yaw", False):
+                exit_yaw = ingress.yaw
             self.request_preview(
                 self.final_goal,
                 (self.legs[0], ingress,
-                 MissionLeg("CABIN", self.target_floor, destination_cabin, ingress.yaw)))
+                 MissionLeg("CABIN", self.target_floor, destination_cabin, exit_yaw)))
         self.send_leg(self.legs[0])
         if first_kind == "FINAL":
             self.transition(TRACK_SINGLE, "tracking same-floor goal")
@@ -462,9 +472,31 @@ class ElevatorMissionManager:
             if self.state == TRACK_INGRESS:
                 if self.latest_elevator_mode:
                     self.enter_transit()
+                elif self.elevator.get("align_exit_yaw", False) and not self.manual_start:
+                    self.start_cabin_alignment(ALIGN_CABIN)
                 else:
                     self.transition(WAIT_ELEVATOR_MODE,
                                     "inside elevator; waiting for in_elevator=true")
+
+    def start_cabin_alignment(self, state: str) -> None:
+        self.cabin_alignment_stamp = rospy.Time.now()
+        self.cabin_alignment_started_at = self.now()
+        self.transition(state, "inside elevator; aligning to the exit-facing pose")
+
+    def on_cabin_aligned(self, msg: Header) -> None:
+        with self.lock:
+            if (self.state not in (ALIGN_CABIN, ALIGN_EXIT) or self.latest_elevator_mode
+                    or msg.stamp != self.cabin_alignment_stamp or not self.ready_for_planning()):
+                return
+            if self.state == ALIGN_CABIN:
+                self.transition(WAIT_ELEVATOR_MODE, "exit-facing pose confirmed; waiting for elevator ride")
+            elif self.current_floor() == self.target_floor:
+                self.start_exit_leg()
+
+    def start_exit_leg(self) -> None:
+        self.leg_index = 2
+        self.send_leg(self.legs[self.leg_index])
+        self.transition(TRACK_LEG2, "tracking destination-floor goal")
 
     def try_start_ingress(self) -> None:
         if (self.state != WAIT_DOOR_OUTSIDE or not self.door_open or
@@ -486,12 +518,36 @@ class ElevatorMissionManager:
         self.cancel_pub.publish(Empty())
         self.transition(ELEVATOR_TRANSIT, "elevator transit; navigation frozen")
 
+    def ingress_pose_inside_cabin(self) -> bool:
+        if not self.fresh_odom() or self.current_floor() != self.start_floor:
+            return False
+        stop = self.elevator["floors"][self.start_floor]
+        cx, cy, _, _ = stop["inside_pose"]
+        door = stop.get("door_center_xy")
+        if door is None:
+            return False
+        px, py = door
+        position = self.latest_odom.pose.pose.position
+        nx, ny = px - cx, py - cy
+        door_depth = math.hypot(nx, ny)
+        if door_depth < .05 or math.hypot(position.x - cx, position.y - cy) > .30:
+            return False
+        return ((px - position.x) * nx + (py - position.y) * ny) / door_depth >= .40
+
     def on_elevator_mode(self, msg: Bool) -> None:
         with self.lock:
             self.latest_elevator_mode = bool(msg.data)
-            if msg.data and self.state == WAIT_ELEVATOR_MODE:
+            if msg.data and self.state in (WAIT_ELEVATOR_MODE, ALIGN_CABIN):
                 self.enter_transit()
-            elif msg.data and self.state == WAIT_DOOR_OPEN:
+            elif (msg.data and self.state == TRACK_INGRESS
+                  and self.elevator.get("align_exit_yaw", False)):
+                if self.ingress_pose_inside_cabin():
+                    # The lift may move before the local follower acknowledges
+                    # arrival. Freeze immediately if the body is already inside.
+                    self.enter_transit()
+                else:
+                    self.fail("elevator mode began before the body was inside the cabin")
+            elif msg.data and self.state in (WAIT_DOOR_OPEN, ALIGN_EXIT):
                 self.elevator_stopped_at = None
                 self.transition(ELEVATOR_TRANSIT, "elevator resumed transit")
             elif (not msg.data and self.state == ELEVATOR_TRANSIT and
@@ -566,10 +622,14 @@ class ElevatorMissionManager:
                 return
             if self.state == WAIT_DOOR_OUTSIDE:
                 self.try_start_ingress()
+            if (self.state == ALIGN_EXIT and self.cabin_alignment_started_at is not None
+                    and now - self.cabin_alignment_started_at > self.door_plan_timeout_s):
+                self.fail("destination exit timed out while waiting for cabin alignment")
+                return
             if (self.state == WAIT_DOOR_OPEN and self.elevator_stopped_at is not None and
                     now - self.elevator_stopped_at >= self.door_settle_s):
                 if now - self.elevator_stopped_at > self.door_plan_timeout_s:
-                    self.fail("destination height, localization or door confirmation timed out")
+                    self.fail("destination exit timed out: " + self.message)
                     return
                 if not self.ready_for_planning():
                     self.exit_door_since = None
@@ -584,9 +644,10 @@ class ElevatorMissionManager:
                         or now - self.exit_door_since < self.exit_door_confirm_s):
                     self.message = "at destination height; waiting for sustained door confirmation from cabin"
                     return
-                self.leg_index = 2
-                self.send_leg(self.legs[self.leg_index])
-                self.transition(TRACK_LEG2, "tracking destination-floor goal")
+                if self.elevator.get("align_exit_yaw", False) and not self.manual_start:
+                    self.start_cabin_alignment(ALIGN_EXIT)
+                else:
+                    self.start_exit_leg()
 
     def on_cancel(self, _msg: Empty) -> None:
         with self.lock:

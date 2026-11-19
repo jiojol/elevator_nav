@@ -94,6 +94,7 @@ private:
     bool first_lidar_ = true;
     int init_lidar_accum_count_ = 0;
 
+    double navigation_lidar_backlog_s_ = 0.0;
     bool exit_from_elevator_ = false;
     bool rebuild_map_pending_ = false;
     int rebuild_map_accum_count_ = 0;

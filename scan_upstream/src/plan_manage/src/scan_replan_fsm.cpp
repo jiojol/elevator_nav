@@ -86,6 +86,21 @@ namespace scan_upstream_planner
       }
     }
 
+    XmlRpc::XmlRpcValue elevator;
+    if (nh.getParam("fsm/elevator", elevator) && elevator.hasMember("align_exit_yaw") &&
+        static_cast<bool>(elevator["align_exit_yaw"]) && elevator.hasMember("floors"))
+    {
+      auto &stops = elevator["floors"];
+      for (auto it = stops.begin(); it != stops.end(); ++it)
+      {
+        auto &pose = it->second["inside_pose"];
+        auto number = [](XmlRpc::XmlRpcValue &v) {
+          return v.getType() == XmlRpc::XmlRpcValue::TypeInt ?
+              static_cast<double>(static_cast<int>(v)) : static_cast<double>(v);
+        };
+        elevator_cabins_.emplace_back(number(pose[0]), number(pose[1]), number(pose[2]));
+      }
+    }
     /* initialize main modules */
     visualization_.reset(new PlanningVisualization(nh));
     planner_manager_.reset(new SCANPlannerManager);
@@ -379,6 +394,19 @@ namespace scan_upstream_planner
     }
 
     trigger_ = true;
+    ingress_direction_.setZero();
+    const auto &goal = msg->poses.back().pose;
+    const Eigen::Vector3d endpoint(goal.position.x, goal.position.y, goal.position.z);
+    for (const auto &cabin : elevator_cabins_)
+    {
+      if ((endpoint - cabin).norm() < .03)
+      {
+        const auto &q = goal.orientation;
+        const double yaw = std::atan2(2. * (q.w*q.z + q.x*q.y), 1. - 2. * (q.y*q.y + q.z*q.z));
+        ingress_direction_ = Eigen::Vector2d(std::cos(yaw), std::sin(yaw));
+        break;
+      }
+    }
     end_pt_ << msg->poses.back().pose.position.x,
         msg->poses.back().pose.position.y,
         msg->poses.back().pose.position.z + body_height_;
@@ -647,7 +675,7 @@ namespace scan_upstream_planner
       else
         flag_random_poly_init = true;
 
-      const bool success = (holding_emergency_stop_ && tryShortForwardPlan()) ||
+      const bool success = ((holding_emergency_stop_ || !ingress_direction_.isZero()) && tryShortForwardPlan()) ||
                            callReboundReplan(true, flag_random_poly_init);
       if (success)
       {
@@ -1225,6 +1253,24 @@ namespace scan_upstream_planner
     return true;
   }
 
+  bool SCANReplanFSM::followsElevatorIngress(UniformBspline &candidate)
+  {
+    if (ingress_direction_.isZero()) return true;
+    const double duration = candidate.getTimeSum();
+    const Eigen::Vector2d start = candidate.evaluateDeBoorT(0.).head<2>();
+    double lookahead = .8;
+    ros::param::getCached("/closed_loop_controller/time_forward", lookahead);
+    for (double t = 0.; t <= std::min(duration, 1.2); t += .10)
+    {
+      const Eigen::Vector2d pos = candidate.evaluateDeBoorT(t).head<2>();
+      const Eigen::Vector2d heading = headingPreview(candidate, t, duration, lookahead, pos);
+      if ((!heading.isZero(1e-9) && heading.normalized().dot(ingress_direction_) < std::cos(.65)) ||
+          (pos - start).dot(ingress_direction_) < -.04)
+        return false;
+    }
+    return true;
+  }
+
   bool SCANReplanFSM::callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj,
                                      double short_horizon, double lateral_offset)
   {
@@ -1246,6 +1292,11 @@ namespace scan_upstream_planner
         have_new_target_ || flag_use_poly_init, flag_randomPolyTraj,
         [this](std::vector<Eigen::Vector3d> &seed) { shapeReferenceHeight(seed); },
         [this, short_horizon, lateral_offset](UniformBspline &candidate) {
+          if (!followsElevatorIngress(candidate))
+          {
+            ROS_WARN_THROTTLE(1.0, "Rejecting local trajectory that turns away from the elevator during ingress.");
+            return false;
+          }
           if (!followsStairProgress(candidate))
           {
             ROS_WARN_THROTTLE(1.0, "Rejecting local trajectory that doubles back on a stair segment.");

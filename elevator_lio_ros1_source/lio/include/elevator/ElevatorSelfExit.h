@@ -55,6 +55,9 @@ public:
     ProcessResult process(const ImuFrame& frame, State& state);
 
     void reset();
+    void enableNavigationStopCheck(bool enabled) { navigation_stop_check_ = enabled; }
+    bool usesIndependentHeight() const { return independent_stop_; }
+    double independentHeight() const { return ride_height_; }
 
     int eleState() const { return static_cast<int>(ele_state_); }
     bool stopCheckConfirmed() const { return stop_check_confirmed_; }
@@ -77,6 +80,13 @@ private:
     double last_exit_eval_time_ = -1.0;
     double last_waiting_zupt_time_ = -std::numeric_limits<double>::infinity();
 
+    bool navigation_stop_check_ = false;
+    bool independent_stop_ = false;
+    double baseline_ = 0., filtered_acceleration_ = 0.;
+    double ride_velocity_ = 0., ride_height_ = 0., motion_direction_ = 0.;
+    double peak_velocity_ = 0., quiet_time_ = 0.;
+    double ride_age_ = 0., onset_time_ = 0., moving_time_ = 0.;
+    bool braking_seen_ = false;
     WindowStdDev rolling_std_{300};
     DebugInfo debug_;
 };

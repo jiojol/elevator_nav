@@ -407,6 +407,9 @@ int main(int argc, char** argv)
     ros_node->param("config_path", config_path, string("root_config.yaml"));
     ROS_INFO("Config path: %s", config_path.c_str());
     load_root_yaml(config_path);
+    // Navigation already records raw scans. Avoid synchronous incremental PCD
+    // writes in the ROS callback loop when running against a prebuilt map.
+    ros_node->param("save_mapping_cloud", global_map_save_enable, global_map_save_enable);
 
     // 设置地图的最小分辨率
     if (downsample_adaptive_enabled) {

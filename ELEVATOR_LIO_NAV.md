@@ -41,9 +41,14 @@ Livox MID-360
 ```
 
 During `in_elevator=true`, map registration corrections are frozen while
-Elevator-LIO odometry continues to be published. On the next normal-mode
-message, the localizer reacquires a submap and waits for a validated correction
-before reporting `TRACKING` again.
+Elevator-LIO odometry continues to be published. The test11 navigation launch additionally checks the elevator's acceleration,
+braking and stationary period using a separately bias-corrected IMU estimate.
+One bounded vertical step (up to 1.0 m)
+consistent with the Elevator-LIO exit ZUPT is allowed during the ride without
+using that frame as a velocity sample. On the next normal-mode message, the
+localizer reacquires a submap and waits for two consecutive scan matches to
+agree before reporting `TRACKING` again. Post-elevator reacquisition can
+correct up to 3.0 m. Normal tracking uses the 0.35 m limit.
 
 ## FREE map generation
 
@@ -241,21 +246,36 @@ and 0.30 rad/s respectively. An authorized ingress route uses the configured
 corridor forward speed as its planar cap (0.75 m/s for test11), with the same
 near-door lateral and yaw limits. Within 0.45 m of the marked lobby, with
 fresh tracking, cloud and an active SCAN trajectory, the robot stops translating
-and turns to the published lobby yaw. It acknowledges arrival after settling
-within 0.10 rad. The test11 lobby points
+and turns to the published lobby yaw. Test11 uses 0.45–0.55 rad/s for this
+stationary turn, within the configured chassis yaw limit. It acknowledges
+arrival after settling within 0.10 rad. The test11 lobby points
 are set back about 1.39 m and 1.56 m from their configured door planes.
 Arrival still requires the body center to be at least 0.80 m outside the
 plane. These are map estimates and require on-site clearance verification.
-Ingress requires fresh door-open evidence from the lobby side. LiDAR and
-odometry freshness checks remain active at both speeds. At the destination,
-continuous cabin-side door confirmation for 1.0 s is required before planning
-the exit. A localization dropout or a break in door evidence resets the timer.
+Ingress requires fresh door-open evidence from the lobby side. Test11 also
+checks the start of each SCAN ingress spline against the door-facing heading.
+A candidate that doubles back is discarded and SCAN can try a shorter
+collision-checked trajectory. The robot
+holds still during the ride. In test11, it first tries to align to the
+exit-facing pose after reaching the cabin parking point. If the lift moves
+first, alignment resumes after arrival and reacquisition. Both alignments
+require fresh tracking and odometry, cabin-side door-open evidence and
+a clear footprint sweep. At the destination, the exit is planned after
+sustained door confirmation and verified alignment.
 From inside the cabin, the exit reference passes through the door center and a point just
-outside it. Both points must have same-floor FREE support. SCAN still validates
+outside it. Test11 starts with a 0.35 m/s exit speed limit and ramps to the
+corridor limit as the body clears 0.65 m beyond the door plane. Both points must have same-floor FREE support. SCAN still validates
 the route against live obstacles. If the exit stalls after the body has moved
 at least 0.25 m, the adapter can request a bounded replan from fresh odometry.
 
-Full navigation automatically records a split ROS bag in `~/bags`, including
+Navigation uses a prebuilt map and disables Elevator-LIO's incremental
+mapping PCD writes by default. Outside elevator transitions, navigation
+discards old LiDAR work when newer frames are already queued over 0.15 s ahead.
+The adaptive LiDAR point budget is capped at the nominal radar frame rate
+so a skipped scan cannot increase the processing cost of the next scan.
+The mapping workflow retains its own settings. Full navigation automatically
+records a split ROS bag in
+`~/bags`, including
 the LiDAR/IMU, global and local paths, SCAN status, `/cmd_vel` and chassis
 feedback. Ctrl-C finalizes the current bag file.
 

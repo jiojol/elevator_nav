@@ -110,6 +110,9 @@ namespace scan_upstream_planner
 
     double referenceProgress(const Eigen::Vector3d &position, double lower, double upper) const;
     bool followsStairProgress(UniformBspline &candidate) const;
+    bool followsElevatorIngress(UniformBspline &candidate);
+    std::vector<Eigen::Vector3d> elevator_cabins_;
+    Eigen::Vector2d ingress_direction_ = Eigen::Vector2d::Zero();
     Eigen::Vector3d referencePosition(double progress) const;
     void shapeReferenceHeight(std::vector<Eigen::Vector3d> &seed) const;
 

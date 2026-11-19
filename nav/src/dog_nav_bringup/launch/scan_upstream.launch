@@ -33,6 +33,8 @@
   </include>
   <!-- Sensor pose is already the calibrated lidar pose in map: never apply
        upstream's example mounting extrinsic a second time. -->
+  <rosparam ns="scan_upstream_planner_node/fsm" command="load" file="$(arg elevator_config)"
+            if="$(eval arg('elevator_config') != '')"/>
   <param name="scan_upstream_planner_node/grid_map/need_extrinsic" value="false" type="bool"/>
   <param name="scan_upstream_planner_node/grid_map/double_cylinder_radius" value="$(arg point_radius)"/>
   <param name="scan_upstream_planner_node/grid_map/double_cylinder_offset" value="$(eval .5 * float(arg('point_separation')))"/>
@@ -48,6 +50,10 @@
     <rosparam command="load" file="$(arg elevator_config)" if="$(eval arg('elevator_config') != '')"/>
     <param name="elevator_speed_limit" value="$(arg elevator_speed_limit)" type="double"/>
     <param name="elevator_ingress_speed_limit" value="$(arg elevator_ingress_speed_limit)" type="double"/>
+    <param name="max_yaw" value="$(arg max_yaw)" type="double"/>
+    <param name="max_vel" value="$(arg max_vel)" type="double"/>
+    <param name="point_radius" value="$(arg point_radius)" type="double"/>
+    <param name="point_separation" value="$(arg point_separation)" type="double"/>
     <param name="body_height" value="$(arg body_height)"/>
   </node>
   <node pkg="dog_nav_bringup" type="reference_path_transform" name="reference_path_transform"

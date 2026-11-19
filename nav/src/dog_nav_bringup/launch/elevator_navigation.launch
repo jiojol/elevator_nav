@@ -9,6 +9,7 @@
   <arg name="nav_bag" default=""/>
   <arg name="start_lio" default="true"/>
   <arg name="lio_config" default="root_config.yaml"/>
+  <arg name="lio_save_mapping_cloud" default="false"/>
   <arg name="start_bridge" default="true"/>
   <arg name="planning_only" default="$(eval arg('map_set') == 'test11')"/>
   <arg name="planning_live_pose" default="$(eval arg('map_set') == 'test11')"/>
@@ -34,7 +35,7 @@
               /livox/lidar /livox/imu /tf /tf_static /rosout
               /LIO/odom_imu /LIO/in_elevator /dog_nav/odometry /dog_nav/localization_status
               /dog_nav/sensor_pose /navigation/obstacle_points /initialpose /move_base_simple/goal
-              /elevator_nav/status /elevator_nav/result /elevator/door_open /elevator/door_status
+              /elevator_nav/status /elevator_nav/result /elevator_nav/cabin_aligned /elevator/door_open /elevator/door_status
               /plan_map/segment_goal /plan_map/global_path /initial_path /map_manager/status /map_manager/result
               /planning/bspline /planning/go2_execution_frozen /planning/go2_execution_progress
               /planning/scan_upstream_cmd_vel /planning/upstream_adapter_status /planning/goal_reached
@@ -43,6 +44,9 @@
   <node pkg="lio" type="lio" name="lio" output="screen" required="true"
         if="$(eval arg('start_lio') and not arg('manual_start'))">
     <param name="config_path" value="$(arg lio_config)" type="str"/>
+    <param name="save_mapping_cloud" value="$(arg lio_save_mapping_cloud)" type="bool"/>
+    <param name="navigation_lidar_backlog_s" value="0.15" type="double"/>
+    <param name="navigation_elevator_stop_check" value="$(eval arg('map_set') == 'test11')" type="bool"/>
   </node>
 
   <node pkg="dog_nav_bringup" type="unitree_nav_bridge" name="go2_ros_bridge"

@@ -97,6 +97,7 @@ class MapLocalizer {
     initial_translation_ = positive("initial_max_translation", 2);
     initial_rotation_ = positive("initial_max_rotation_deg", 45) * kRad;
     tracking_translation_ = positive("tracking_max_translation", .35);
+    elevator_reacquire_translation_ = positive("elevator_reacquire_max_translation", .85);
     tracking_rotation_ = positive("tracking_max_rotation_deg", 6) * kRad;
     tilt_limit_ = positive("max_gravity_tilt_deg", 12) * kRad;
     initial_fraction_ = positive("initial_min_inlier_fraction", .65);
@@ -223,12 +224,15 @@ class MapLocalizer {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!elevator_mode_enabled_ || msg->data == elevator_mode_) return;
     elevator_mode_ = msg->data;
+    ++generation_;  // Ignore registration jobs from the previous ride phase.
+    elevator_matches_ = 0;
     target_ = current_;
     local_submap_.reset();
     latest_.reset();
     last_verification_ = ros::Time();
     if (elevator_mode_) {
       elevator_reacquire_pending_ = false;
+      elevator_height_update_accepted_ = false;
       last_match_ = ros::Time::now();
       status(initialized_ ? "ELEVATOR_MODE" : "WAITING_INITIAL_POSE");
       ROS_INFO("LIO map localizer: elevator mode entered; GICP correction frozen");
@@ -257,11 +261,14 @@ class MapLocalizer {
     const double dt = previous_stamp_.isZero() ? 0 : (stamp - previous_stamp_).toSec();
     Eigen::Vector3d linear = Eigen::Vector3d::Zero(), angular = Eigen::Vector3d::Zero();
     bool reset = false;
+    Eigen::Vector3d displacement = Eigen::Vector3d::Zero();
+    double rotation = 0.;
     if (!previous_stamp_.isZero()) {
-      const double distance = (local_base.translation() - previous_base_.translation()).norm();
+      displacement = local_base.translation() - previous_base_.translation();
       Eigen::AngleAxisd turn(previous_base_.linear().transpose() * local_base.linear());
-      reset = dt <= 0 || distance > max_speed_ * std::max(dt, .01) + .05 ||
-              std::abs(turn.angle()) > max_angular_ * std::max(dt, .01) + .05;
+      rotation = std::abs(turn.angle());
+      reset = dt <= 0 || displacement.norm() > max_speed_ * std::max(dt, .01) + .05 ||
+              rotation > max_angular_ * std::max(dt, .01) + .05;
       if (dt > 0 && dt <= input_timeout_) {
         linear = local_base.linear().transpose() * (local_base.translation() - previous_base_.translation()) / dt;
         angular = local_base.linear().transpose() * previous_base_.linear() * turn.axis() * turn.angle() / dt;
@@ -282,6 +289,22 @@ class MapLocalizer {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (reset) {
+        const Eigen::Vector3d map_delta = current_.linear() * displacement;
+        // Exit ZUPT can commit a step in height before the elevator flag turns
+        // false. Keep the map anchor and never treat this frame as a velocity.
+        // The flag transition still requires a new successful map match.
+        if (initialized_ && elevator_mode_ && !elevator_height_update_accepted_ &&
+            dt > 0. && dt <= input_timeout_ && rotation <= .10 &&
+            map_delta.head<2>().norm() <= .08 && std::abs(map_delta.z()) <= 1.0 &&
+            std::abs(map_delta.z()) > max_speed_ * std::max(dt, .01) + .05) {
+          elevator_height_update_accepted_ = true;
+          last_input_ = stamp;
+          ROS_INFO("Elevator-LIO ride height correction accepted: dz=%.3f m; map match required after exit",
+                   map_delta.z());
+          return;
+        }
+        ROS_WARN("LIO pose discontinuity: dt=%.3f s, map dxyz=(%.3f, %.3f, %.3f) m, rotation=%.3f rad, elevator=%d",
+                 dt, map_delta.x(), map_delta.y(), map_delta.z(), rotation, elevator_mode_);
         initialized_ = have_initial_ = seeded_ = false; latest_.reset(); ++generation_;
         cancel_pub_.publish(std_msgs::Empty()); status("LIO_RESET_SET_INITIAL_POSE");
         return;
@@ -402,7 +425,7 @@ class MapLocalizer {
     registration.setNumThreads(threads_);registration.setMaximumIterations(iterations_);
     registration.setTransformationEpsilon(.001);
     while (ros::ok()) {
-      Cloud::ConstPtr scan; Transform local_imu, guess, published; ros::Time stamp; bool initial; unsigned epoch;
+      Cloud::ConstPtr scan; Transform local_imu, guess, published; ros::Time stamp; bool initial, reacquiring; unsigned epoch;
       {
         std::unique_lock<std::mutex> lock(mutex_);
         wake_.wait_for(lock, std::chrono::milliseconds(100), [this, &processed, &next] {
@@ -412,6 +435,7 @@ class MapLocalizer {
         if (!latest_ || latest_stamp_ == processed || std::chrono::steady_clock::now() < next) continue;
         scan = latest_; local_imu = latest_pose_; stamp = latest_stamp_;
         guess = target_; published = current_; initial = !initialized_; epoch = generation_; processed = stamp;
+        reacquiring = initialized_ && elevator_reacquire_pending_;
       }
       {
         bool frozen = false;
@@ -469,6 +493,12 @@ class MapLocalizer {
       registration.setInputSource(source);
       const Transform anchor_pose=local_imu*base_imu_.inverse();
       const Transform bounds=initial?published:guess;
+      const double max_shift = initial ? initial_translation_ :
+          (reacquiring ? elevator_reacquire_translation_ : tracking_translation_);
+      const double min_overlap = initial ? initial_fraction_ :
+          (reacquiring ? std::max(.70, verified_fraction_) : inlier_fraction_);
+      const double max_rmse = initial ? initial_rmse_ :
+          (reacquiring ? std::min(.15, verified_rmse_) : rmse_limit_);
       Transform candidate=Transform::Identity();
       double fraction=0.,rmse=1e9,tilt=0.,shift=0.,rotation=0.;
       std::string rejection="limits_or_quality";
@@ -485,9 +515,9 @@ class MapLocalizer {
         shift=dog_nav::registrationShift(bounds,candidate,anchor_pose.translation());
         rotation=dog_nav::registrationRotation(bounds,candidate);
         const auto q=quality(source,candidate*local_imu,1,cached->registration_tree);fraction=q.fraction;rmse=q.rmse;
-        return tilt<=tilt_limit_ && shift<=(initial?initial_translation_:tracking_translation_) &&
+        return tilt<=tilt_limit_ && shift<=max_shift &&
             rotation<=(initial?initial_rotation_:tracking_rotation_) &&
-            fraction>=(initial?initial_fraction_:inlier_fraction_) && rmse<=(initial?initial_rmse_:rmse_limit_);
+            fraction>=min_overlap && rmse<=max_rmse;
       };
       bool accepted=solve(guess);
       if (!accepted && initial) {
@@ -521,9 +551,12 @@ class MapLocalizer {
           ROS_WARN_THROTTLE(3,"LIO local registration rejected: body shift %.3f m, rotation %.2f deg, map tilt %.2f/%.2f deg, overlap %.1f%%, RMSE %.3f m; %s",
                             shift,rotation/kRad,tilt/kRad,tilt_limit_/kRad,fraction*100,rmse,
                             initial?"adjust initial position/yaw if this persists":"keeping only independently verified pose");
-        if (initial) {
+        if (initial || reacquiring) {
           std::lock_guard<std::mutex> lock(mutex_);
-          if (generation_==epoch) { initial_matches_=0;target_=current_; }
+          if (generation_==epoch) {
+            if (initial) { initial_matches_=0;target_=current_; }
+            if (reacquiring) elevator_matches_=0;
+          }
         }
         retainVerifiedPose(true);continue;
       }
@@ -541,6 +574,27 @@ class MapLocalizer {
                      fraction*100,rmse,tilt/kRad,initial_matches_,initial_confirmations_);
             continue;
           }
+        }
+        if (reacquiring) {
+          // The chassis is held during reacquisition. Commit only after
+          // distinct fresh scans agree, before making this pose executable.
+          if ((ros::Time::now() - stamp).toSec() > std::min(2., match_timeout_)) {
+            elevator_matches_ = 0;
+            continue;
+          }
+          const bool consistent = elevator_matches_ > 0 &&
+              dog_nav::registrationShift(elevator_candidate_, candidate, anchor_pose.translation()) <= .15 &&
+              dog_nav::registrationRotation(elevator_candidate_, candidate) <= 3*kRad;
+          elevator_matches_ = consistent ? elevator_matches_ + 1 : 1;
+          elevator_candidate_ = candidate;
+          if (elevator_matches_ < 2) {
+            ROS_INFO("LIO exit map match candidate: shift %.3f m, %.1f%% overlap, RMSE %.3f m; waiting for another scan",
+                     shift, fraction * 100., rmse);
+            continue;
+          }
+          current_ = candidate;
+          ROS_INFO("LIO exit map match accepted: shift %.3f m, %.1f%% overlap, RMSE %.3f m",
+                   shift, fraction * 100., rmse);
         }
         target_ = candidate; last_match_ = std::max(last_match_,stamp);
         elevator_reacquire_pending_ = false;
@@ -572,14 +626,17 @@ class MapLocalizer {
   ros::Time last_verification_;
   double verified_fraction_, verified_rmse_;
   double initial_fraction_,initial_rmse_,search_xy_,search_z_,search_yaw_;
-  int initial_confirmations_=2,initial_matches_=0;
+  int initial_confirmations_=2,initial_matches_=0,elevator_matches_=0;
   double initial_translation_, initial_rotation_, tracking_translation_, tracking_rotation_, tilt_limit_;
+  double elevator_reacquire_translation_;
   double linear_rate_, angular_rate_, match_timeout_, input_timeout_, max_speed_, max_angular_;
   int min_points_, threads_, iterations_;
   std::mutex mutex_; std::condition_variable wake_; std::thread worker_; bool stopping_ = false;
   bool have_initial_ = false, seeded_ = false, initialized_ = false; unsigned generation_ = 0;
   bool elevator_mode_enabled_ = false, elevator_mode_ = false, elevator_reacquire_pending_ = false;
+  bool elevator_height_update_accepted_ = false;
   Transform initial_pose_ = Transform::Identity(), current_ = Transform::Identity(), target_ = Transform::Identity();
+  Transform elevator_candidate_ = Transform::Identity();
   Cloud::ConstPtr latest_; Transform latest_pose_ = Transform::Identity();
   ros::Time latest_stamp_, last_match_, last_input_; std::string status_;
   std::string input_odom_topic_, input_cloud_topic_, elevator_flag_topic_;

@@ -39,6 +39,10 @@ LidarPipeline::LidarPipeline(lio_ros::Node& nh,
     , downsampled_cloud_(new PointCloudXYZI)
     , blind_filtered_(new PointCloudXYZI)
 {
+    nh.param("navigation_lidar_backlog_s", navigation_lidar_backlog_s_, 0.0);
+    bool independent_stop = false;
+    nh.param("navigation_elevator_stop_check", independent_stop, false);
+    elevator_self_exit_.enableNavigationStopCheck(independent_stop);
     ele_state_pub_ = nh.advertise<lio_ros::Bool>("/LIO/in_elevator", 1, true);
     elevator_estimate_pub_ = nh.advertise<lio_ros::ElevatorState>("/LIO/elevator_state", 1, true);
 }
@@ -88,8 +92,14 @@ void LidarPipeline::updateAdaptiveConfig(double end_time) {
     adaptive_dt_warmed_up_ = adaptive_dt_warmed_up_ || (last_lidar_stamp_for_adaptive_ > 0.0);
     last_lidar_stamp_for_adaptive_ = end_time;
 
+    double budget_dt = smoothed_lidar_dt_for_adaptive_;
+    if (navigation_lidar_backlog_s_ > 0.0 && lidar_frequency > 0.0) {
+        // Skipping old work increases the interval between processed scans,
+        // not the points in a scan. Avoid increasing work during a backlog.
+        budget_dt = std::min(budget_dt, 1.0 / lidar_frequency);
+    }
     current_target_points_per_frame_ =
-        std::max(1.0, downsample_target_points * smoothed_lidar_dt_for_adaptive_);
+        std::max(1.0, downsample_target_points * budget_dt);
     AdaptiveVoxelPController::Config cfg = voxel_ctrl_.config();
     cfg.target_points = current_target_points_per_frame_;
     voxel_ctrl_.setConfig(cfg);
@@ -341,6 +351,10 @@ void LidarPipeline::handleElevatorStop(State& post_state) {
     if (!elevator_self_exit_.stopCheckConfirmed()) return;
 
     int zupt_count = elevator_self_exit_.stopCheckLidarZuptCount();
+    if (elevator_self_exit_.usesIndependentHeight()) {
+        post_state.z = elevator_self_exit_.independentHeight();
+        post_state.vz = 0.;
+    }
     if (elevator_zupt_enable && zupt_count < 3) {
         imu_process_.elev_process.applyZeroVelocityUpdateZ(post_state);
         estimator_->set_cur_state(post_state);
@@ -502,6 +516,31 @@ LidarPipeline::Result LidarPipeline::process() {
     if (!dequeueFrame(frame)) {
         FSM::dispatch(FSM::Event::LidarEnd);
         return result;
+    }
+
+    // In navigation, do not spend mapping time on a queue of old scans while
+    // newer scans are already waiting. IMU integration and the elevator/initial
+    // mapping state machine continue to process their normal inputs.
+    if (navigation_lidar_backlog_s_ > 0.0 && !first_lidar_ && !rebuild_map_pending_ &&
+        !exit_from_elevator_ && !ELEVATOR_TRIGGER && !high_frequency_odom &&
+        !estimator_->get_cur_state().in_elevator) {
+        double backlog = 0.0;
+        {
+            std::scoped_lock lock(shared_bufs_->mtx);
+            auto& queue = shared_bufs_->lidar_frame_buf;
+            if (queue.size() > 1 && queue.front().end_time == frame.end_time) {
+                const double age = queue.back().end_time - frame.end_time;
+                if (age > navigation_lidar_backlog_s_) {
+                    backlog = age;
+                    queue.pop_front();
+                }
+            }
+        }
+        if (backlog > 0.0) {
+            LOG_WARN(Map, "Skipping queued navigation LiDAR frame, backlog " << backlog << " s");
+            FSM::dispatch(FSM::Event::LidarEnd);
+            return result;
+        }
     }
 
     // [2] Adaptive voxel config

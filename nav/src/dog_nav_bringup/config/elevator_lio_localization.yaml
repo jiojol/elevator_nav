@@ -36,6 +36,8 @@ verified_pose_max_inlier_rmse: 0.20
 initial_max_translation: 2.0
 initial_max_rotation_deg: 45.0
 tracking_max_translation: 0.35
+# Only used while stopped for post-elevator map reacquisition.
+elevator_reacquire_max_translation: 3.0
 tracking_max_rotation_deg: 6.0
 max_gravity_tilt_deg: 12.0
 initial_min_inlier_fraction: 0.65

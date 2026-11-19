@@ -3,14 +3,15 @@
 elevator:
   id: E1
   configured: true
+  align_exit_yaw: true
   door_width: 1.0
   door_height: 2.2
   floors:
     floor1:
       lobby_pose: [6.700, -5.709, -0.40, 3.122]
       door_center_xy: [5.314, -5.709]
-      inside_pose: [4.728, -5.709, -0.40, 3.122]
+      inside_pose: [4.728, -5.709, -0.40, 0.0]
     floor2:
       lobby_pose: [6.700, -5.478, 6.85, -3.039]
       door_center_xy: [5.1415, -5.478]
-      inside_pose: [4.533, -5.478, 6.85, -3.039]
+      inside_pose: [4.533, -5.478, 6.85, 0.0]

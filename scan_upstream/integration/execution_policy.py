@@ -78,6 +78,44 @@ def limit_near_cabin(command, ground_xyz, cabins, cabin_speed, lobbies=()):
     return vx * scale, vy * scale, wz
 
 
+def limit_elevator_exit(command, ground_xyz, lobby_planes, cabin_speed, corridor_speed, yaw_limit):
+    """Apply the cabin limits only until the body clears the door plane."""
+    x, y, z = ground_xyz
+    planes = [(abs(z - floor[2]), plane) for floor, plane in lobby_planes.items()
+              if abs(z - floor[2]) <= .75]
+    if not planes:
+        return None
+    _, (cx, cy, nx, ny) = min(planes, key=lambda item: item[0])
+    clearance = (x - cx) * nx + (y - cy) * ny
+    clear_distance = .65
+    if clearance >= clear_distance:
+        return command
+    progress = max(0., clearance) / clear_distance
+    speed_limit = cabin_speed + (corridor_speed - cabin_speed) * progress
+    vx, vy, wz = command
+    vy = math.copysign(min(abs(vy), .10), vy)
+    wz = math.copysign(min(abs(wz), yaw_limit), wz)
+    speed = math.hypot(vx, vy)
+    scale = min(1., speed_limit / speed) if speed else 1.
+    return vx * scale, vy * scale, wz
+
+
+def cabin_turn_clear(points, body_xyz, body_height, swept_radius):
+    """Conservatively check the full in-place sweep of SCAN's two cylinders."""
+    x, y, z = body_xyz
+    lower = z - body_height + .10
+    upper = z + .30
+    radius_squared = swept_radius * swept_radius
+    seen = False
+    for px, py, pz in points:
+        if not all(map(math.isfinite, (px, py, pz))):
+            continue
+        seen = True
+        if lower <= pz <= upper and (px - x) ** 2 + (py - y) ** 2 <= radius_squared:
+            return False
+    return seen
+
+
 def world_velocity(quaternion, velocity):
     """Original SCAN expects world twist; localization exports body twist."""
     x,y,z,w = quaternion
