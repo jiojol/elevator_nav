@@ -56,6 +56,7 @@ public:
 
     void reset();
     void enableNavigationStopCheck(bool enabled) { navigation_stop_check_ = enabled; }
+    void enableNavigationZuptContinuation(bool enabled) { navigation_continue_zupt_ = enabled; }
     bool usesIndependentHeight() const { return independent_stop_; }
     double independentHeight() const { return ride_height_; }
 
@@ -81,6 +82,8 @@ private:
     double last_waiting_zupt_time_ = -std::numeric_limits<double>::infinity();
 
     bool navigation_stop_check_ = false;
+    bool navigation_continue_zupt_ = false;
+    double stop_acceleration_ = 0.;
     bool independent_stop_ = false;
     double baseline_ = 0., filtered_acceleration_ = 0.;
     double ride_velocity_ = 0., ride_height_ = 0., motion_direction_ = 0.;

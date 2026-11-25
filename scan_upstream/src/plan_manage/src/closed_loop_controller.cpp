@@ -4,7 +4,7 @@
 #include <string>
 
 #include <Eigen/Eigen>
-#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <nav_msgs/Odometry.h>
 #include <ros/ros.h>
 #include <std_msgs/Bool.h>
@@ -21,9 +21,11 @@ using scan_upstream_planner::UniformBspline;
 
 constexpr double kMaxVYawLimit = 1.0;
 
-ros::Publisher cmd_vel_pub;
+ros::Publisher cmd_vel_pub, rl_cmd_vel_pub;
+ros::Time spline_stamp;
 ros::Publisher execution_frozen_pub;
 ros::Publisher execution_progress_pub;
+
 bool receive_traj = false;
 bool have_odom = false;
 std::vector<UniformBspline> traj;
@@ -33,6 +35,8 @@ int traj_id = 0;
 Eigen::Vector3d odom_pos = Eigen::Vector3d::Zero();
 double odom_yaw = 0.0;
 bool stationary_hold = false;
+Eigen::Vector2d chassis_velocity = Eigen::Vector2d::Zero();  // base_link
+ros::Time chassis_stamp, pose_stamp;
 
 double exec_time = 0.0;
 ros::Time last_update_time;
@@ -105,11 +109,23 @@ double estimateDesiredYaw(double t_cur, const Eigen::Vector3d &pos_des)
   return dir.isZero(1e-9) ? odom_yaw : std::atan2(dir.y(), dir.x());
 }
 
+void publishCommand(const geometry_msgs::Twist &cmd)
+{
+  cmd_vel_pub.publish(cmd);
+  if (rl_cmd_vel_pub)
+  {
+    geometry_msgs::TwistStamped stamped;
+    stamped.header.stamp = spline_stamp;
+    stamped.twist = cmd;
+    rl_cmd_vel_pub.publish(stamped);
+  }
+}
+
 void publishStop(double vyaw = 0.0)
 {
   geometry_msgs::Twist cmd;
   cmd.angular.z = clamp(vyaw, -max_vyaw, max_vyaw);
-  cmd_vel_pub.publish(cmd);
+  publishCommand(cmd);
 }
 
 void publishExecutionFrozen(bool frozen)
@@ -149,6 +165,7 @@ void bsplineCallback(const scan_upstream_planner::BsplineConstPtr &msg)
 
   traj_duration = traj[0].getTimeSum();
   traj_id = msg->traj_id;
+  spline_stamp = msg->start_time;
   exec_time = 0.0;
   last_update_time = ros::Time::now();
   receive_traj = true;
@@ -162,7 +179,61 @@ void odomCallback(const nav_msgs::OdometryConstPtr &msg)
   odom_pos(1) = msg->pose.pose.position.y;
   odom_pos(2) = msg->pose.pose.position.z;
   odom_yaw = tf::getYaw(msg->pose.pose.orientation);
+  pose_stamp = msg->header.stamp;
   have_odom = true;
+}
+
+void chassisVelocityCallback(const nav_msgs::OdometryConstPtr &msg)
+{
+  const auto &v = msg->twist.twist.linear;
+  const auto stamp = msg->header.stamp;
+  if (msg->child_frame_id != "base_link" || !std::isfinite(v.x) || !std::isfinite(v.y) ||
+      stamp.isZero() || stamp > ros::Time::now() || stamp <= chassis_stamp)
+    return;
+
+  const Eigen::Vector2d sample(v.x, v.y);
+  const double dt = (stamp - chassis_stamp).toSec();
+  if (chassis_stamp.isZero() || dt > 0.20)
+    chassis_velocity = sample;
+  else
+    chassis_velocity += -std::expm1(-dt / 0.12) * (sample - chassis_velocity);
+  chassis_stamp = stamp;
+}
+
+double stairSpeedCorrection(const Eigen::Vector3d &position, const Eigen::Vector2d &feedforward,
+                            const Eigen::Vector2d &position_error, const Eigen::Vector2d &command,
+                            const ros::Time &now)
+{
+  const double age = (now - chassis_stamp).toSec();
+  const double pose_age = (now - pose_stamp).toSec();
+  const double speed = feedforward.norm();
+  if (chassis_stamp.isZero() || age < 0.0 || age > 0.20 || pose_age < 0.0 || pose_age > 0.20 ||
+      speed < 0.03 || exec_time >= traj_duration)
+    return 0.0;
+
+  const Eigen::Vector2d tangent = feedforward / speed;
+  const double lag = tangent.dot(position_error);
+  const Eigen::Vector2d body_forward(std::cos(odom_yaw), std::sin(odom_yaw));
+  if (lag <= 0.0 || tangent.dot(body_forward) < 0.90 ||
+      tangent.dot(command) < 0.90 * command.norm())
+    return 0.0;
+
+  const Eigen::Vector3d ahead = traj[0].evaluateDeBoorT(std::min(exec_time + 2.0, traj_duration));
+  const Eigen::Vector2d forward = (ahead - position).head<2>();
+  if (tangent.dot(forward) < std::max(0.10, 0.90 * forward.norm()))
+    return 0.0;
+
+  const Eigen::Vector3d behind = traj[0].evaluateDeBoorT(std::max(0.0, exec_time - 0.6));
+  const Eigen::Vector3d span = ahead - behind;
+  const double grade = std::abs(span.z()) / std::max(0.10, span.head<2>().norm());
+  const double grade_weight = std::clamp((grade - 0.12) / 0.15, 0.0, 1.0);
+  const Eigen::Vector2d body_left(-body_forward.y(), body_forward.x());
+  const double measured = tangent.dot(body_forward) * chassis_velocity.x() +
+                          tangent.dot(body_left) * chassis_velocity.y();
+
+  // Correct only a positive shortfall; position lag and reference speed
+  // both bound the extra command as the chassis catches up or the curve ends.
+  return grade_weight * std::max(0.0, std::min({0.10, 1.2 * lag, 0.70 * (speed - measured), 0.50 * speed}));
 }
 
 void publishExecutionProgress()
@@ -218,9 +289,18 @@ void cmdCallback(const ros::TimerEvent &)
   pos_des = traj[0].evaluateDeBoorT(exec_time);
   vel_des = traj[1].evaluateDeBoorT(exec_time);
 
-  Eigen::Vector2d pos_err(pos_des(0) - odom_pos(0), pos_des(1) - odom_pos(1));
-  Eigen::Vector2d vel_ff(vel_des(0), vel_des(1));
-  Eigen::Vector2d vel_world = clampNorm(vel_ff + kp_pos * pos_err, std::max(max_vx, max_vy));
+  const Eigen::Vector2d pos_err = pos_des.head<2>() - odom_pos.head<2>();
+  const Eigen::Vector2d vel_ff = vel_des.head<2>();
+  Eigen::Vector2d position_feedback = pos_err;
+  if (exec_time < traj_duration && vel_ff.norm() > 0.18 && std::abs(yaw_err) < 0.25 &&
+      direction.dot(vel_ff) >= 0.97 * vel_ff.norm())
+  {
+    // Suppress centimetre-scale corrections on straight stretches. Preserve
+    // the signed velocity feedforward along a checked avoidance trajectory.
+    const Eigen::Vector2d normal(-direction.y(), direction.x());
+    position_feedback -= clamp(normal.dot(pos_err), -0.035, 0.035) * normal;
+  }
+  const Eigen::Vector2d vel_world = clampNorm(vel_ff + kp_pos * position_feedback, std::max(max_vx, max_vy));
 
   const double c = std::cos(odom_yaw);
   const double s = std::sin(odom_yaw);
@@ -228,6 +308,21 @@ void cmdCallback(const ros::TimerEvent &)
   cmd.linear.x = clamp(c * vel_world(0) + s * vel_world(1), -max_vx, max_vx);
   cmd.linear.y = clamp(-s * vel_world(0) + c * vel_world(1), -max_vy, max_vy);
   cmd.angular.z = vyaw_cmd;
+
+  const double correction = stairSpeedCorrection(pos_des, vel_ff, pos_err, vel_world, now);
+  const double command_speed = std::hypot(cmd.linear.x, cmd.linear.y);
+  if (correction > 0.0 && command_speed > 1e-4)
+  {
+    // Scale the already bounded body command so a saturated lateral axis
+    // cannot change the tracking direction.
+    double scale = std::min(command_speed + correction, std::max(max_vx, max_vy)) / command_speed;
+    if (cmd.linear.x != 0.0)
+      scale = std::min(scale, max_vx / std::abs(cmd.linear.x));
+    if (cmd.linear.y != 0.0)
+      scale = std::min(scale, max_vy / std::abs(cmd.linear.y));
+    cmd.linear.x *= scale;
+    cmd.linear.y *= scale;
+  }
 
   if (exec_time >= traj_duration)
   {
@@ -240,7 +335,7 @@ void cmdCallback(const ros::TimerEvent &)
       cmd = geometry_msgs::Twist();
   }
 
-  cmd_vel_pub.publish(cmd);
+  publishCommand(cmd);
 }
 } // namespace
 
@@ -253,21 +348,27 @@ int main(int argc, char **argv)
   if (!loadParams(nh))
     return 1;
 
-  const ros::Subscriber bspline_sub = node.subscribe("planning/bspline", 10, bsplineCallback);
-  const ros::Subscriber odom_sub = node.subscribe(body_pose_topic, 20, odomCallback, ros::TransportHints().tcpNoDelay());
+  const auto bspline_sub = node.subscribe("planning/bspline", 10, bsplineCallback);
+  const auto odom_sub = node.subscribe(body_pose_topic, 20, odomCallback, ros::TransportHints().tcpNoDelay());
+  const auto chassis_velocity_sub = node.subscribe("/go2/odom", 5, chassisVelocityCallback, ros::TransportHints().tcpNoDelay());
   cmd_vel_pub = node.advertise<geometry_msgs::Twist>("cmd_vel", 20);
+  bool rl_control = false;
+  ros::param::param("/integration/go2_rl", rl_control, false);
+  if (rl_control)
+    rl_cmd_vel_pub = node.advertise<geometry_msgs::TwistStamped>("/planning/scan_upstream_stamped_cmd_vel", 1);
   execution_frozen_pub = node.advertise<std_msgs::Bool>("planning/go2_execution_frozen", 10);
   execution_progress_pub = node.advertise<std_msgs::Float64MultiArray>("planning/go2_execution_progress", 1);
-  ros::Timer cmd_timer = node.createTimer(ros::Duration(0.01), cmdCallback);
+  auto cmd_timer = node.createTimer(ros::Duration(0.01), cmdCallback);
 
   last_update_time = ros::Time::now();
   ROS_WARN("[closed_loop_controller] ready.");
 
   ros::spin();
+  // Release the ROS handles while their managers are still alive.
   cmd_timer.stop();
-  // Release ROS handles before the process-wide roscpp state is destroyed.
   execution_progress_pub.shutdown();
   execution_frozen_pub.shutdown();
+  rl_cmd_vel_pub.shutdown();
   cmd_vel_pub.shutdown();
   return 0;
 }

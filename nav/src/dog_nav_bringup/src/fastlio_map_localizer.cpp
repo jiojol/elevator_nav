@@ -8,6 +8,7 @@
 #include <std_msgs/Empty.h>
 #include <std_msgs/Bool.h>
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud2_iterator.h>
 #include <message_filters/subscriber.h>
 #include <message_filters/sync_policies/approximate_time.h>
 #include <message_filters/synchronizer.h>
@@ -28,6 +29,8 @@
 #include <memory>
 #include <thread>
 #include <stdexcept>
+#include <deque>
+#include <XmlRpcValue.h>
 
 using Transform = Eigen::Isometry3d;
 using Point = pcl::PointXYZI;
@@ -97,7 +100,11 @@ class MapLocalizer {
     initial_translation_ = positive("initial_max_translation", 2);
     initial_rotation_ = positive("initial_max_rotation_deg", 45) * kRad;
     tracking_translation_ = positive("tracking_max_translation", .35);
+    pnh_.param("map_recovery_max_translation", map_recovery_translation_, 0.);
+    map_recovery_rotation_ = positive("map_recovery_max_rotation_deg", 15.) * kRad;
+    map_recovery_vertical_ = positive("map_recovery_max_vertical", .60);
     elevator_reacquire_translation_ = positive("elevator_reacquire_max_translation", .85);
+    elevator_height_step_limit_ = positive("elevator_max_height_update", 1.0);
     tracking_rotation_ = positive("tracking_max_rotation_deg", 6) * kRad;
     tilt_limit_ = positive("max_gravity_tilt_deg", 12) * kRad;
     initial_fraction_ = positive("initial_min_inlier_fraction", .65);
@@ -121,7 +128,10 @@ class MapLocalizer {
         verified_fraction_ > 1 || verified_fraction_ < inlier_fraction_ || verified_rmse_ > rmse_limit_ ||
         initial_fraction_ > 1 || initial_fraction_ < inlier_fraction_ || initial_rmse_ > rmse_limit_ ||
         initial_confirmations_ < 2 || initial_confirmations_ > 5 || tilt_limit_ > 15*kRad ||
-        search_xy_ > initial_translation_ || search_z_ > initial_translation_ || search_yaw_ > initial_rotation_)
+        search_xy_ > initial_translation_ || search_z_ > initial_translation_ || search_yaw_ > initial_rotation_ ||
+        !std::isfinite(map_recovery_translation_) || map_recovery_translation_ < 0. ||
+        (map_recovery_translation_ > 0. &&
+          (map_recovery_translation_ <= tracking_translation_ || map_recovery_vertical_ > map_recovery_translation_)))
       throw std::runtime_error("invalid registration parameters");
     std::vector<double> r, t, lo, hi;
     const bool private_extrinsic =
@@ -173,6 +183,14 @@ class MapLocalizer {
       elevator_flag_sub_ = nh_.subscribe(
           elevator_flag_topic_, 1, &MapLocalizer::elevatorFlag, this);
     }
+    pnh_.param("chassis_prediction_timeout", chassis_prediction_timeout_, 0.);
+    if (chassis_prediction_timeout_ > input_timeout_ && chassis_prediction_timeout_ <= 1.) {
+      loadCabinPositions();
+      if (!cabin_positions_.empty()) {
+        chassis_sub_ = nh_.subscribe("/go2/odom", 4, &MapLocalizer::chassisOdom, this);
+        chassis_timer_ = nh_.createTimer(ros::Duration(1. / 30.), &MapLocalizer::predictChassis, this);
+      }
+    }
     status("WAITING_INITIAL_POSE");
     ROS_INFO("LIO map localizer loaded %zu points. Set 3D Pose Estimate; wait for TRACKING before a goal.", map_->size());
     worker_ = std::thread(&MapLocalizer::worker, this);
@@ -201,6 +219,9 @@ class MapLocalizer {
     std::lock_guard<std::mutex> lock(mutex_);
     initial_pose_ = pose; have_initial_ = true; initialized_ = false; seeded_ = false;
     initial_matches_ = 0;
+    elevator_reacquire_pending_ = false;
+    map_recovery_pending_ = false;
+    chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
     ++generation_; latest_.reset(); last_match_ = ros::Time();
     local_submap_.reset();last_verification_=ros::Time();
     cancel_pub_.publish(std_msgs::Empty());
@@ -224,15 +245,19 @@ class MapLocalizer {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!elevator_mode_enabled_ || msg->data == elevator_mode_) return;
     elevator_mode_ = msg->data;
+    chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
     ++generation_;  // Ignore registration jobs from the previous ride phase.
-    elevator_matches_ = 0;
+    recovery_matches_ = 0;
+    if (map_recovery_pending_) {
+      elevator_reacquire_pending_ = initialized_;
+      map_recovery_pending_ = false;
+    }
     target_ = current_;
     local_submap_.reset();
     latest_.reset();
     last_verification_ = ros::Time();
     if (elevator_mode_) {
-      elevator_reacquire_pending_ = false;
-      elevator_height_update_accepted_ = false;
+      elevator_height_step_seen_ = false;
       last_match_ = ros::Time::now();
       status(initialized_ ? "ELEVATOR_MODE" : "WAITING_INITIAL_POSE");
       ROS_INFO("LIO map localizer: elevator mode entered; GICP correction frozen");
@@ -286,26 +311,49 @@ class MapLocalizer {
       clean->push_back(p);
     }
     Transform map_local;
+    double alignment_epoch;
     {
       std::lock_guard<std::mutex> lock(mutex_);
+      if (elevator_mode_ && dt > 0. && dt <= input_timeout_ &&
+          displacement.head<2>().norm() <= max_speed_ * dt + .05 &&
+          rotation <= max_angular_ * dt + .05 && std::abs(displacement.z()) <= 6. * dt + .05) {
+        // The shaft has its own vertical motion, and navigation is frozen.
+        reset = false;
+      }
       if (reset) {
         const Eigen::Vector3d map_delta = current_.linear() * displacement;
         // Exit ZUPT can commit a step in height before the elevator flag turns
         // false. Keep the map anchor and never treat this frame as a velocity.
         // The flag transition still requires a new successful map match.
-        if (initialized_ && elevator_mode_ && !elevator_height_update_accepted_ &&
-            dt > 0. && dt <= input_timeout_ && rotation <= .10 &&
-            map_delta.head<2>().norm() <= .08 && std::abs(map_delta.z()) <= 1.0 &&
-            std::abs(map_delta.z()) > max_speed_ * std::max(dt, .01) + .05) {
-          elevator_height_update_accepted_ = true;
+        // Test verticality in the gravity-aligned LIO frame. A tilted map
+        // projects part of the elevator's vertical motion onto map XY.
+        if (initialized_ && (elevator_mode_ || elevator_reacquire_pending_) &&
+            dt > 0. && dt <= 2. * input_timeout_ &&
+            rotation <= .10 && displacement.head<2>().norm() <= .08 &&
+            std::abs(displacement.z()) > max_speed_ * std::max(dt, .01) + .05) {
           last_input_ = stamp;
-          ROS_INFO("Elevator-LIO ride height correction accepted: dz=%.3f m; map match required after exit",
-                   map_delta.z());
+          if (elevator_height_step_seen_ || dt > input_timeout_ ||
+              std::abs(displacement.z()) > elevator_height_step_limit_) {
+            // Wait for the stopped state and independent map matches before
+            // publishing a pose from an untrusted height step.
+            elevator_reacquire_pending_ = true;
+            latest_.reset();
+            recovery_matches_ = 0;
+            ++generation_;
+            ROS_WARN_THROTTLE(1., "Elevator-LIO height step withheld: dz=%.3f m, dt=%.3f s; preserving map anchor for reacquisition",
+                              displacement.z(), dt);
+          } else {
+            ROS_INFO("Elevator-LIO ride height correction accepted: dz=%.3f m; map match required after exit",
+                     displacement.z());
+          }
+          elevator_height_step_seen_ = true;
           return;
         }
         ROS_WARN("LIO pose discontinuity: dt=%.3f s, map dxyz=(%.3f, %.3f, %.3f) m, rotation=%.3f rad, elevator=%d",
                  dt, map_delta.x(), map_delta.y(), map_delta.z(), rotation, elevator_mode_);
         initialized_ = have_initial_ = seeded_ = false; latest_.reset(); ++generation_;
+        map_recovery_pending_ = false;
+        chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
         cancel_pub_.publish(std_msgs::Empty()); status("LIO_RESET_SET_INITIAL_POSE");
         return;
       }
@@ -323,12 +371,21 @@ class MapLocalizer {
         // and do not let map-match age suppress the navigation odometry.
         if (!initialized_) return;
         last_match_ = stamp;
-        map_local = current_;
         status("ELEVATOR_MODE");
+        if (elevator_reacquire_pending_) return;
+        map_local = current_;
       } else {
         latest_ = clean; latest_pose_ = local_imu; latest_stamp_ = stamp;
         wake_.notify_one();
         if (!initialized_) return;
+        if (elevator_reacquire_pending_) {
+          status("REACQUIRING_MAP");
+          return;
+        }
+        if (map_recovery_pending_) {
+          status("LOST_MAP_MATCH");
+          return;
+        }
         // Bounded verification runs with the LIO callback, independently of a
         // potentially slow GICP solve. It queries ONLY the cached local submap.
         if(local_submap_ && (last_verification_.isZero() || (stamp-last_verification_).toSec()>=verification_period_)) {
@@ -342,7 +399,17 @@ class MapLocalizer {
               last_match_=std::max(last_match_,stamp);
           }
         }
-        if ((stamp - last_match_).toSec() > match_timeout_) { status("LOST_MAP_MATCH"); return; }
+        if ((stamp - last_match_).toSec() > match_timeout_) {
+          if (map_recovery_translation_ > 0.) {
+            map_recovery_pending_ = true;
+            recovery_matches_ = 0;
+            target_ = current_;
+            chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
+            ++generation_;
+          }
+          status("LOST_MAP_MATCH");
+          return;
+        }
         // Smooth global corrections, never smooth or replace the local motion.
         const double step = std::max(0.0, std::min(dt, .2));
         // The saved map can have a small gravity-frame tilt. Preserve the full
@@ -360,9 +427,56 @@ class MapLocalizer {
         current_.linear()=current_rotation.slerp(fraction,target_rotation).normalized().toRotationMatrix();
         current_.translation()=current_anchor+delta-current_.linear()*local_anchor;
         map_local = current_;
-        if (!elevator_reacquire_pending_) status("TRACKING");
+        status("TRACKING");
+        if (!cabin_positions_.empty() && !nearCabin(map_local * local_base)) {
+          chassis_anchor_stamp_ = stamp;
+          chassis_anchor_base_ = local_base;
+          chassis_anchor_map_ = map_local;
+        } else {
+          chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
+        }
       }
+      alignment_epoch = alignment_epoch_;
     }
+    publishBase(stamp, map_local, local_base, linear, angular);
+    const Transform map_imu = map_local * local_imu;
+    nav_msgs::Odometry sensor;
+    sensor.header.stamp = stamp; sensor.header.frame_id = map_frame_;
+    sensor.child_frame_id = sensor_frame_;
+    sensor.pose.pose = toPose(map_imu * imu_lidar_); sensor_pub_.publish(sensor);
+    Cloud::Ptr obstacles = voxel(clean, obstacle_voxel_);
+    if (obstacles->empty()) return;
+    pcl::transformPointCloud(*obstacles, *obstacles, map_imu.matrix().cast<float>().eval());
+    sensor_msgs::PointCloud2 cloud;
+    cloud.header = sensor.header;
+    sensor_msgs::PointCloud2Modifier fields(cloud);
+    fields.setPointCloud2Fields(8,
+        "x", 1, sensor_msgs::PointField::FLOAT32,
+        "y", 1, sensor_msgs::PointField::FLOAT32,
+        "z", 1, sensor_msgs::PointField::FLOAT32,
+        "intensity", 1, sensor_msgs::PointField::FLOAT32,
+        "vp_x", 1, sensor_msgs::PointField::FLOAT64,
+        "vp_y", 1, sensor_msgs::PointField::FLOAT64,
+        "vp_z", 1, sensor_msgs::PointField::FLOAT64,
+        "alignment_epoch", 1, sensor_msgs::PointField::FLOAT64);
+    fields.resize(obstacles->size());
+    cloud.is_dense = true;
+    sensor_msgs::PointCloud2Iterator<float> x(cloud, "x"), y(cloud, "y"), z(cloud, "z"), intensity(cloud, "intensity");
+    sensor_msgs::PointCloud2Iterator<double> vx(cloud, "vp_x"), vy(cloud, "vp_y"), vz(cloud, "vp_z"), epoch(cloud, "alignment_epoch");
+    for (const auto& point : *obstacles) {
+      *x = point.x; *y = point.y; *z = point.z; *intensity = point.intensity;
+      *vx = sensor.pose.pose.position.x; *vy = sensor.pose.pose.position.y; *vz = sensor.pose.pose.position.z;
+      *epoch = alignment_epoch;
+      ++x; ++y; ++z; ++intensity; ++vx; ++vy; ++vz; ++epoch;
+    }
+    cloud_pub_.publish(cloud);
+  }
+  void publishBase(const ros::Time& stamp, const Transform& map_local, const Transform& local_base,
+                   const Eigen::Vector3d& linear, const Eigen::Vector3d& angular) {
+    // A subsequent LiDAR scan can arrive with a stamp behind a prediction.
+    // It still refreshes map evidence and obstacles at its actual scan time.
+    if (stamp <= last_base_stamp_) return;
+    last_base_stamp_ = stamp;
     nav_msgs::Odometry out;
     out.header.stamp = stamp; out.header.frame_id = map_frame_; out.child_frame_id = robot_base_frame_;
     out.pose.pose = toPose(map_local * local_base);
@@ -372,13 +486,93 @@ class MapLocalizer {
     geometry_msgs::PoseStamped body; body.header = out.header; body.pose = out.pose.pose; pose_pub_.publish(body);
     broadcast(map_local, map_frame_, odom_tf_frame_, stamp);
     broadcast(local_base, odom_tf_frame_, robot_base_frame_, stamp);
-    const Transform map_imu = map_local * local_imu;
-    nav_msgs::Odometry sensor; sensor.header = out.header;
-    sensor.child_frame_id = sensor_frame_;
-    sensor.pose.pose = toPose(map_imu * imu_lidar_); sensor_pub_.publish(sensor);
-    Cloud::Ptr obstacles = voxel(clean, obstacle_voxel_);
-    pcl::transformPointCloud(*obstacles, *obstacles, map_imu.matrix().cast<float>().eval());
-    sensor_msgs::PointCloud2 cloud; pcl::toROSMsg(*obstacles, cloud); cloud.header = out.header; cloud_pub_.publish(cloud);
+  }
+  void loadCabinPositions() {
+    bool configured = false;
+    pnh_.param("elevator/configured", configured, false);
+    XmlRpc::XmlRpcValue floors;
+    if (!configured || !pnh_.getParam("elevator/floors", floors) ||
+        floors.getType() != XmlRpc::XmlRpcValue::TypeStruct) return;
+    std::vector<Eigen::Vector3d> positions;
+    for (auto& floor : floors) {
+      auto& config = floor.second;
+      if (config.getType() != XmlRpc::XmlRpcValue::TypeStruct || !config.hasMember("inside_pose")) return;
+      auto& pose = config["inside_pose"];
+      if (pose.getType() != XmlRpc::XmlRpcValue::TypeArray || pose.size() != 4) return;
+      Eigen::Vector3d xyz;
+      for (int i = 0; i < 3; ++i) {
+        if (pose[i].getType() == XmlRpc::XmlRpcValue::TypeDouble) xyz[i] = static_cast<double>(pose[i]);
+        else if (pose[i].getType() == XmlRpc::XmlRpcValue::TypeInt) xyz[i] = static_cast<int>(pose[i]);
+        else return;
+      }
+      if (!xyz.allFinite()) return;
+      positions.emplace_back(xyz);
+    }
+    cabin_positions_ = std::move(positions);
+  }
+  bool nearCabin(const Transform& map_base) const {
+    const Eigen::Vector3d position = map_base.translation();
+    return std::any_of(cabin_positions_.begin(), cabin_positions_.end(), [&](const Eigen::Vector3d& cabin) {
+      return std::abs(position.z() - cabin.z()) <= 1.2 && (position - cabin).head<2>().norm() <= 1.5;
+    });
+  }
+  struct ChassisSample {
+    ros::Time stamp;
+    Eigen::Vector2d position;
+    double yaw;
+    Eigen::Vector3d velocity, angular;
+  };
+  void chassisOdom(const nav_msgs::OdometryConstPtr& msg) {
+    const ros::Time stamp = msg->header.stamp;
+    const double age = (ros::Time::now() - stamp).toSec();
+    if (stamp.isZero() || age < -.02 || age > .15 || msg->header.frame_id != "go2_odom" ||
+        msg->child_frame_id != robot_base_frame_) return;
+    Transform pose;
+    try { pose = fromPose(msg->pose.pose); } catch (const std::exception&) { return; }
+    const auto& v = msg->twist.twist.linear;
+    const double rate = msg->twist.twist.angular.z;
+    ChassisSample sample{stamp, pose.translation().head<2>(), yaw(pose), {v.x, v.y, 0.}, {0., 0., rate}};
+    if (!sample.velocity.allFinite() || !std::isfinite(rate) || sample.velocity.norm() > 1.5 ||
+        std::abs(rate) > max_angular_) return;
+    if (!chassis_history_.empty()) {
+      const auto& previous = chassis_history_.back();
+      const double dt = (stamp - previous.stamp).toSec();
+      if (dt < .005) return;
+      if (dt > .15 || (sample.position - previous.position).norm() > 1.5 * dt + .04 ||
+          std::abs(angle(sample.yaw - previous.yaw)) > max_angular_ * dt + .06) chassis_history_.clear();
+    }
+    chassis_history_.push_back(sample);
+    while ((stamp - chassis_history_.front().stamp).toSec() > 1.2) chassis_history_.pop_front();
+  }
+  void predictChassis(const ros::TimerEvent&) {
+    const ros::Time now = ros::Time::now();
+    std::lock_guard<std::mutex> lock(mutex_);
+    const double elapsed = (now - chassis_anchor_stamp_).toSec();
+    if (elevator_mode_ || elevator_reacquire_pending_ || status_ != "TRACKING" ||
+        chassis_anchor_stamp_.isZero() || elapsed < .16 || elapsed > chassis_prediction_timeout_ ||
+        (now - last_match_).toSec() > match_timeout_ || chassis_history_.size() < 2) return;
+    const auto& live = chassis_history_.back();
+    const double age = (now - live.stamp).toSec();
+    if (age < 0. || age > .15 || live.stamp <= last_base_stamp_) return;
+    const auto right = std::upper_bound(chassis_history_.begin(), chassis_history_.end(), chassis_anchor_stamp_,
+        [](const ros::Time& stamp, const ChassisSample& sample) { return stamp < sample.stamp; });
+    if (right == chassis_history_.begin() || right == chassis_history_.end()) return;
+    const auto& left = *std::prev(right);
+    const double span = (right->stamp - left.stamp).toSec();
+    if (span > .12) return;
+    const double alpha = (chassis_anchor_stamp_ - left.stamp).toSec() / span;
+    const double start_yaw = left.yaw + alpha * angle(right->yaw - left.yaw);
+    const Eigen::Vector2d start_xy = left.position + alpha * (right->position - left.position);
+    const Eigen::Vector2d move = live.position - start_xy;
+    if (move.norm() > 1.25 * elapsed + .05) return;
+    Transform predicted = chassis_anchor_base_;
+    predicted.translation().head<2>() += Eigen::Rotation2Dd(yaw(chassis_anchor_base_) - start_yaw) * move;
+    predicted.linear() = Eigen::AngleAxisd(angle(live.yaw - start_yaw), Eigen::Vector3d::UnitZ()) * predicted.linear();
+    if (nearCabin(chassis_anchor_map_ * predicted)) return;
+    publishBase(live.stamp, chassis_anchor_map_, predicted, live.velocity, live.angular);
+    last_chassis_prediction_ = live.stamp;
+    if (elapsed > input_timeout_)
+      ROS_INFO_THROTTLE(3., "Go2 odometry and IMU bridging a LiDAR input gap of %.3f s", elapsed);
   }
   void broadcast(const Transform& t, const std::string& parent, const std::string& child, ros::Time stamp) {
     geometry_msgs::TransformStamped msg; msg.header.stamp = stamp; msg.header.frame_id = parent; msg.child_frame_id = child;
@@ -388,7 +582,12 @@ class MapLocalizer {
   }
   void watchdog(const ros::TimerEvent&) {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (initialized_ && !last_input_.isZero() && (ros::Time::now() - last_input_).toSec() > input_timeout_) status("LOST_LIO_INPUT");
+    const ros::Time now = ros::Time::now();
+    const bool predicted = !chassis_anchor_stamp_.isZero() && !last_chassis_prediction_.isZero() &&
+        (now - chassis_anchor_stamp_).toSec() <= chassis_prediction_timeout_ &&
+        (now - last_chassis_prediction_).toSec() <= .15 && (now - last_match_).toSec() <= match_timeout_;
+    if (initialized_ && !predicted && !last_input_.isZero() && (now - last_input_).toSec() > input_timeout_)
+      status("LOST_LIO_INPUT");
   }
   struct LocalSubmap {
     Cloud::Ptr points;
@@ -425,7 +624,8 @@ class MapLocalizer {
     registration.setNumThreads(threads_);registration.setMaximumIterations(iterations_);
     registration.setTransformationEpsilon(.001);
     while (ros::ok()) {
-      Cloud::ConstPtr scan; Transform local_imu, guess, published; ros::Time stamp; bool initial, reacquiring; unsigned epoch;
+      Cloud::ConstPtr scan; Transform local_imu, guess, published, recovery_seed;
+      ros::Time stamp; bool initial, reacquiring, recovering_map, have_recovery_seed; unsigned epoch;
       {
         std::unique_lock<std::mutex> lock(mutex_);
         wake_.wait_for(lock, std::chrono::milliseconds(100), [this, &processed, &next] {
@@ -435,7 +635,10 @@ class MapLocalizer {
         if (!latest_ || latest_stamp_ == processed || std::chrono::steady_clock::now() < next) continue;
         scan = latest_; local_imu = latest_pose_; stamp = latest_stamp_;
         guess = target_; published = current_; initial = !initialized_; epoch = generation_; processed = stamp;
-        reacquiring = initialized_ && elevator_reacquire_pending_;
+        recovering_map = initialized_ && map_recovery_pending_;
+        reacquiring = initialized_ && (elevator_reacquire_pending_ || recovering_map);
+        have_recovery_seed = reacquiring && recovery_matches_ > 0;
+        if (have_recovery_seed) recovery_seed = recovery_candidate_;
       }
       {
         bool frozen = false;
@@ -445,7 +648,8 @@ class MapLocalizer {
         }
         if (frozen) continue;
       }
-      next = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(1000 * period_));
+      const double period = reacquiring ? std::min(period_, .25) : period_;
+      next = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(1000 * period));
       if ((ros::Time::now() - stamp).toSec() > input_timeout_) continue;
       Cloud::Ptr source = voxel(initial?scan:nearby(scan,tracking_range_),scan_voxel_);
       if (source->size() < static_cast<size_t>(min_points_)) continue;
@@ -454,7 +658,7 @@ class MapLocalizer {
           (center-cached->center).norm()>submap_shift_) {
         Point anchor;anchor.getVector3fMap()=center.cast<float>();
         std::vector<int> indices;std::vector<float> distances;
-        const double radius=initial?radius_:tracking_radius_;
+        const double radius = initial ? radius_ : tracking_radius_ + (recovering_map ? map_recovery_translation_ : 0.);
         map_tree_.radiusSearch(anchor,radius,indices,distances);
         if(indices.size()<static_cast<size_t>(min_points_))continue;
         auto fresh=std::make_shared<LocalSubmap>();fresh->center=center;fresh->initial=initial;fresh->epoch=epoch;
@@ -469,7 +673,7 @@ class MapLocalizer {
       // A rejected optimizer proposal does not invalidate the current pose.
       // Independently check fresh scan/map agreement before retaining it.
       const auto retainVerifiedPose = [&](bool freeze_correction) {
-        if (initial) return;
+        if (initial || recovering_map) return;
         const auto verified = quality(source,published*local_imu,1,cached->registration_tree);
         if (verified.fraction < verified_fraction_ || verified.rmse > verified_rmse_) return;
         std::lock_guard<std::mutex> lock(mutex_);
@@ -489,12 +693,14 @@ class MapLocalizer {
       // a valid alignment, eventually suppressing navigation odometry.
       // This refreshes map evidence only; successful correction logic is unchanged.
       retainVerifiedPose(false);
-      registration.setMaxCorrespondenceDistance(initial?2.0:1.0);
+      registration.setMaxCorrespondenceDistance(initial || recovering_map ? 2.0 : 1.0);
       registration.setInputSource(source);
       const Transform anchor_pose=local_imu*base_imu_.inverse();
       const Transform bounds=initial?published:guess;
       const double max_shift = initial ? initial_translation_ :
-          (reacquiring ? elevator_reacquire_translation_ : tracking_translation_);
+          (recovering_map ? map_recovery_translation_ : (reacquiring ? elevator_reacquire_translation_ : tracking_translation_));
+      const double max_rotation = initial ? initial_rotation_ :
+          (recovering_map ? map_recovery_rotation_ : tracking_rotation_);
       const double min_overlap = initial ? initial_fraction_ :
           (reacquiring ? std::max(.70, verified_fraction_) : inlier_fraction_);
       const double max_rmse = initial ? initial_rmse_ :
@@ -502,6 +708,23 @@ class MapLocalizer {
       Transform candidate=Transform::Identity();
       double fraction=0.,rmse=1e9,tilt=0.,shift=0.,rotation=0.;
       std::string rejection="limits_or_quality";
+      const Transform bound_body = bounds * anchor_pose;
+      const auto assess = [&](const Transform& proposal, double overlap, double rmse_cap) {
+        candidate = proposal;
+        tilt = dog_nav::registrationTilt(candidate);
+        shift = dog_nav::registrationShift(bounds, candidate, anchor_pose.translation());
+        rotation = dog_nav::registrationRotation(bounds, candidate);
+        const auto q = quality(source, candidate * local_imu, 1, cached->registration_tree);
+        fraction = q.fraction;
+        rmse = q.rmse;
+        const Transform candidate_body = candidate * anchor_pose;
+        const double vertical_shift = std::abs(candidate_body.translation().z() - bound_body.translation().z());
+        const double vertical_limit = recovering_map && (nearCabin(bound_body) || nearCabin(candidate_body)) ?
+            std::min(.60, map_recovery_vertical_) : map_recovery_vertical_;
+        return tilt <= tilt_limit_ && shift <= max_shift && rotation <= max_rotation &&
+            (!recovering_map || vertical_shift <= vertical_limit) &&
+            fraction >= overlap && rmse <= rmse_cap;
+      };
       auto solve=[&](const Transform& seed) {
         Cloud aligned;
         registration.align(aligned,(seed*local_imu).matrix().cast<float>().eval());
@@ -509,28 +732,79 @@ class MapLocalizer {
         if (!registration.getFinalTransformation().allFinite()){rejection="nonfinite_transform";return false;}
         rejection="limits_or_quality";
         Transform map_imu=Transform::Identity();map_imu.matrix()=registration.getFinalTransformation().cast<double>();
-        candidate=map_imu*local_imu.inverse();
-        candidate.linear()=Eigen::Quaterniond(candidate.linear()).normalized().toRotationMatrix();
-        tilt=dog_nav::registrationTilt(candidate);
-        shift=dog_nav::registrationShift(bounds,candidate,anchor_pose.translation());
-        rotation=dog_nav::registrationRotation(bounds,candidate);
-        const auto q=quality(source,candidate*local_imu,1,cached->registration_tree);fraction=q.fraction;rmse=q.rmse;
-        return tilt<=tilt_limit_ && shift<=max_shift &&
-            rotation<=(initial?initial_rotation_:tracking_rotation_) &&
-            fraction>=min_overlap && rmse<=max_rmse;
+        Transform proposal = map_imu * local_imu.inverse();
+        proposal.linear() = Eigen::Quaterniond(proposal.linear()).normalized().toRotationMatrix();
+        return assess(proposal, min_overlap, max_rmse);
       };
-      bool accepted=solve(guess);
-      if (!accepted && initial) {
-        // A mouse estimate can land on a floor, a wall or one of the separated
-        // FREE points. Rank bounded XYZ/yaw hypotheses before refining a few;
-        // do not keep retrying an identical GICP local minimum indefinitely.
+      // A distinct fresh scan can directly verify the previous recovery match.
+      // Require tighter agreement before skipping a second optimization.
+      const bool verified_recovery_seed = have_recovery_seed &&
+          assess(recovery_seed, std::max(.85, min_overlap), std::min(.13, max_rmse));
+      bool accepted = verified_recovery_seed;
+      if (!accepted && have_recovery_seed) accepted = solve(recovery_seed);
+      if (!accepted) accepted = solve(guess);
+      if (!accepted && !initial && !reacquiring && rejection == "limits_or_quality" &&
+          shift <= map_recovery_translation_ && rotation <= map_recovery_rotation_ &&
+          tilt <= tilt_limit_ && fraction >= .90 && rmse <= .13 &&
+          (shift > tracking_translation_ || rotation > tracking_rotation_)) {
+        const Transform candidate_body = candidate * anchor_pose;
+        const double dz = candidate_body.translation().z() - bound_body.translation().z();
+        if (std::abs(dz) <= map_recovery_vertical_ && !nearCabin(bound_body) && !nearCabin(candidate_body)) {
+          // Broad surfaces can make an outdated pose pass the minimum inlier
+          // check. Use a substantially better solution as the first recovery
+          // candidate and pause navigation pending an independent second scan.
+          const auto previous = quality(source, published * local_imu, 1, cached->registration_tree);
+          if (fraction >= previous.fraction + .15 && rmse <= previous.rmse - .025) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (generation_ == epoch && initialized_ && have_initial_ &&
+                (ros::Time::now() - stamp).toSec() <= std::min(1., match_timeout_)) {
+              map_recovery_pending_ = true;
+              target_ = current_;
+              recovery_candidate_ = candidate;
+              recovery_matches_ = 1;
+              chassis_anchor_stamp_ = last_chassis_prediction_ = ros::Time();
+              ++generation_;
+              status("LOST_MAP_MATCH");
+              ROS_WARN("LIO map recovery started from a better match: shift %.3f m (dz %.3f m), overlap %.1f%% vs %.1f%%",
+                       shift, dz, fraction * 100., previous.fraction * 100.);
+              next = std::chrono::steady_clock::now();
+              continue;
+            }
+          }
+        }
+      }
+      if (!accepted && reacquiring && !recovering_map) {
+        // Search in the same bounded envelope as the exit registration. A
+        // stop-height error can exceed the correspondence distance at the
+        // original guess, even when the neighboring floor scan is a good fit.
+        const Eigen::Vector3d up = guess.linear().col(2);
+        Transform best_seed = guess;
+        double best_score = -1.;
+        const size_t stride = std::max<size_t>(1, source->size() / 500);
+        for (double offset : {-.75, -.5, -.25, .25, .5, .75}) {
+          Transform seed = guess;
+          seed.translation() += offset * max_shift * up;
+          const auto q = quality(source, seed * local_imu, stride, cached->registration_tree);
+          const double score = q.fraction - .5 * q.rmse;
+          if (score <= best_score) continue;
+          best_seed = seed;
+          best_score = score;
+        }
+        if (best_score > 0.) accepted = solve(best_seed);
+      }
+      if (!accepted && (initial || recovering_map)) {
+        // Rank bounded XYZ/yaw hypotheses before refining a few. For ordinary
+        // map loss, start around the pose propagated by LIO on the same floor.
         struct Seed { Transform pose;double score; };
         std::vector<Seed> seeds;
-        const Eigen::Vector3d anchor=published*anchor_pose.translation();
-        for (double dx:{-search_xy_,0.,search_xy_}) for (double dy:{-search_xy_,0.,search_xy_})
-          for (double dz:{-search_z_,0.,search_z_}) for (double da:{-search_yaw_,0.,search_yaw_}) {
-            Transform seed=published;
-            seed.linear()=Eigen::AngleAxisd(da,Eigen::Vector3d::UnitZ()).toRotationMatrix()*published.linear();
+        const Eigen::Vector3d anchor = bounds * anchor_pose.translation();
+        const double xy = recovering_map ? .65 * max_shift : search_xy_;
+        const double z = recovering_map ? .5 * map_recovery_vertical_ : search_z_;
+        const double heading = recovering_map ? .7 * max_rotation : search_yaw_;
+        for (double dx : {-xy, 0., xy}) for (double dy : {-xy, 0., xy})
+          for (double dz : {-z, 0., z}) for (double da : {-heading, 0., heading}) {
+            Transform seed = bounds;
+            seed.linear() = Eigen::AngleAxisd(da, Eigen::Vector3d::UnitZ()).toRotationMatrix() * bounds.linear();
             seed.translation()=anchor+Eigen::Vector3d(dx,dy,dz)-seed.linear()*anchor_pose.translation();
             const auto q=quality(source,seed*local_imu,std::max<size_t>(1,source->size()/500),cached->registration_tree);
             seeds.push_back({seed,q.fraction-.5*q.rmse});
@@ -555,7 +829,7 @@ class MapLocalizer {
           std::lock_guard<std::mutex> lock(mutex_);
           if (generation_==epoch) {
             if (initial) { initial_matches_=0;target_=current_; }
-            if (reacquiring) elevator_matches_=0;
+            if (reacquiring) recovery_matches_=0;
           }
         }
         retainVerifiedPose(true);continue;
@@ -579,27 +853,33 @@ class MapLocalizer {
           // The chassis is held during reacquisition. Commit only after
           // distinct fresh scans agree, before making this pose executable.
           if ((ros::Time::now() - stamp).toSec() > std::min(2., match_timeout_)) {
-            elevator_matches_ = 0;
+            recovery_matches_ = 0;
             continue;
           }
-          const bool consistent = elevator_matches_ > 0 &&
-              dog_nav::registrationShift(elevator_candidate_, candidate, anchor_pose.translation()) <= .15 &&
-              dog_nav::registrationRotation(elevator_candidate_, candidate) <= 3*kRad;
-          elevator_matches_ = consistent ? elevator_matches_ + 1 : 1;
-          elevator_candidate_ = candidate;
-          if (elevator_matches_ < 2) {
-            ROS_INFO("LIO exit map match candidate: shift %.3f m, %.1f%% overlap, RMSE %.3f m; waiting for another scan",
-                     shift, fraction * 100., rmse);
+          const bool consistent = recovery_matches_ > 0 &&
+              dog_nav::registrationShift(recovery_candidate_, candidate, anchor_pose.translation()) <= .15 &&
+              dog_nav::registrationRotation(recovery_candidate_, candidate) <= 3*kRad;
+          recovery_matches_ = consistent ? recovery_matches_ + 1 : 1;
+          recovery_candidate_ = candidate;
+          const char* phase = recovering_map ? "recovery" : "exit";
+          if (recovery_matches_ < 2) {
+            ROS_INFO("LIO %s map match candidate: shift %.3f m, %.1f%% overlap, RMSE %.3f m; waiting for another scan",
+                     phase, shift, fraction * 100., rmse);
+            next = std::chrono::steady_clock::now();
             continue;
           }
           current_ = candidate;
-          ROS_INFO("LIO exit map match accepted: shift %.3f m, %.1f%% overlap, RMSE %.3f m",
-                   shift, fraction * 100., rmse);
+          ++alignment_epoch_;
+          ROS_INFO("LIO %s map match accepted: shift %.3f m, %.1f%% overlap, RMSE %.3f m (%s)",
+                   phase, shift, fraction * 100., rmse,
+                   verified_recovery_seed ? "verified on a fresh scan" : "second registration");
         }
         target_ = candidate; last_match_ = std::max(last_match_,stamp);
         elevator_reacquire_pending_ = false;
+        map_recovery_pending_ = false;
         if (!initialized_) {
           current_ = candidate; initialized_ = true;
+          ++alignment_epoch_;
           ROS_INFO("LIO initial map match accepted: %.1f%%, RMSE %.3f m, full map-frame tilt %.2f deg retained",
                    fraction*100,rmse,tilt/kRad);
         }
@@ -611,6 +891,13 @@ class MapLocalizer {
   tf2_ros::Buffer buffer_; tf2_ros::TransformListener listener_; tf2_ros::TransformBroadcaster broadcaster_;
   ros::Publisher map_pub_, loaded_pub_, odom_pub_, pose_pub_, cloud_pub_, sensor_pub_, status_pub_, cancel_pub_;
   ros::Subscriber initial_sub_, elevator_flag_sub_; ros::Timer watchdog_;
+  ros::Subscriber chassis_sub_;
+  ros::Timer chassis_timer_;
+  std::vector<Eigen::Vector3d> cabin_positions_;
+  std::deque<ChassisSample> chassis_history_;
+  Transform chassis_anchor_base_ = Transform::Identity(), chassis_anchor_map_ = Transform::Identity();
+  ros::Time chassis_anchor_stamp_, last_chassis_prediction_, last_base_stamp_;
+  double chassis_prediction_timeout_ = 0.;
   message_filters::Subscriber<nav_msgs::Odometry> odom_sub_;
   message_filters::Subscriber<sensor_msgs::PointCloud2> cloud_sub_;
   std::unique_ptr<message_filters::Synchronizer<message_filters::sync_policies::ApproximateTime<
@@ -626,17 +913,21 @@ class MapLocalizer {
   ros::Time last_verification_;
   double verified_fraction_, verified_rmse_;
   double initial_fraction_,initial_rmse_,search_xy_,search_z_,search_yaw_;
-  int initial_confirmations_=2,initial_matches_=0,elevator_matches_=0;
+  int initial_confirmations_=2,initial_matches_=0,recovery_matches_=0;
   double initial_translation_, initial_rotation_, tracking_translation_, tracking_rotation_, tilt_limit_;
-  double elevator_reacquire_translation_;
+  double elevator_reacquire_translation_, elevator_height_step_limit_;
+  double map_recovery_translation_, map_recovery_rotation_, map_recovery_vertical_;
   double linear_rate_, angular_rate_, match_timeout_, input_timeout_, max_speed_, max_angular_;
   int min_points_, threads_, iterations_;
   std::mutex mutex_; std::condition_variable wake_; std::thread worker_; bool stopping_ = false;
   bool have_initial_ = false, seeded_ = false, initialized_ = false; unsigned generation_ = 0;
   bool elevator_mode_enabled_ = false, elevator_mode_ = false, elevator_reacquire_pending_ = false;
-  bool elevator_height_update_accepted_ = false;
+  bool map_recovery_pending_ = false;
+  bool elevator_height_step_seen_ = false;
   Transform initial_pose_ = Transform::Identity(), current_ = Transform::Identity(), target_ = Transform::Identity();
-  Transform elevator_candidate_ = Transform::Identity();
+  Transform recovery_candidate_ = Transform::Identity();
+  double alignment_epoch_ = std::chrono::duration<double>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
   Cloud::ConstPtr latest_; Transform latest_pose_ = Transform::Identity();
   ros::Time latest_stamp_, last_match_, last_input_; std::string status_;
   std::string input_odom_topic_, input_cloud_topic_, elevator_flag_topic_;

@@ -62,6 +62,7 @@ ElevatorSelfExit::ProcessResult ElevatorSelfExit::process(const ImuFrame& frame,
     if (!frame.in_elevator) {
         ele_state_ = IDLE;
         independent_stop_ = braking_seen_ = false;
+        stop_acceleration_ = frame.acc_z;
         baseline_ = filtered_acceleration_ = frame.acc_z;
         ride_velocity_ = ride_height_ = motion_direction_ = peak_velocity_ = quiet_time_ = 0.;
         ride_age_ = onset_time_ = moving_time_ = 0.;
@@ -99,6 +100,19 @@ ElevatorSelfExit::ProcessResult ElevatorSelfExit::process(const ImuFrame& frame,
     const double kStdHigh = 0.01;
     const double kStdLow = 0.01;
     const double kConfirmHoldS = 1.5;
+
+    if (navigation_continue_zupt_ && eval_dt > 0. && eval_dt <= .05) {
+        stop_acceleration_ += (frame.acc_z - stop_acceleration_) * std::min(1., eval_dt / .12);
+        // The first ZUPT abruptly changes estimated velocity. Subsequent
+        // IMU samples can still show that the lift remains stationary.
+        if (stop_check_confirmed_ && stop_check_lidar_zupt_count_ > 0 && !independent_stop_) {
+            if (std::abs(stop_acceleration_) <= .25) return result;
+            stop_check_confirmed_ = false;
+            stop_check_lidar_zupt_count_ = 0;
+            low_var_hold_s_ = 0.;
+            ele_state_ = DECELERATING;
+        }
+    }
 
     if (navigation_stop_check_ && eval_dt > 0. && eval_dt <= .05 && !stop_check_confirmed_) {
         // Estimate the IMU bias while the cabin is stationary. The stop gate
@@ -218,6 +232,7 @@ void ElevatorSelfExit::reset() {
     last_waiting_zupt_time_ = -std::numeric_limits<double>::infinity();
     rolling_std_.clear();
     independent_stop_ = braking_seen_ = false;
+    stop_acceleration_ = 0.;
     baseline_ = filtered_acceleration_ = 0.;
     ride_velocity_ = ride_height_ = motion_direction_ = peak_velocity_ = quiet_time_ = 0.;
     ride_age_ = onset_time_ = moving_time_ = 0.;

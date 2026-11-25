@@ -90,71 +90,56 @@ vector<GridNodePtr> AStar::retrievePath(GridNodePtr current)
     return path;
 }
 
-bool AStar::ConvertToIndexAndAdjustStartEndPoints(Vector3d start_pt, Vector3d end_pt, Vector3i &start_idx, Vector3i &end_idx)
+bool AStar::findEndpoint(const Vector3d &point, const Vector3d &outward, double yaw,
+                         Vector3i &index) const
 {
-    if (!Coord2Index(start_pt, start_idx) || !Coord2Index(end_pt, end_idx))
-        return false;
+    auto clear = [&](const Vector3d &candidate) {
+        return Coord2Index(candidate, index) && checkOccupancy(Index2Coord(index), yaw) == 0;
+    };
+    if (clear(point))
+        return true;
 
-    Eigen::Vector3d start_to_end = end_pt - start_pt;
-    if (start_to_end.norm() < 1e-6)
-        return false;
-    const double path_yaw = std::atan2(start_to_end(1), start_to_end(0));
-    start_to_end.normalize();
-
-    int occ = checkOccupancy(Index2Coord(start_idx), path_yaw);
-    if (occ)
+    // These are rebound guide endpoints, not physical body poses. Search a
+    // short distance near each end instead of extending into unknown space.
+    const Vector3d left(-std::sin(yaw), std::cos(yaw), 0.0);
+    constexpr double max_adjustment = 0.45;
+    for (double distance = step_size_; distance <= max_adjustment + 1e-6; distance += step_size_)
     {
-        //ROS_WARN("Start point is insdide an obstacle.");
-        do
-        {
-            start_pt -= start_to_end * step_size_;
-            if (!Coord2Index(start_pt, start_idx))
-                return false;
-
-            occ = checkOccupancy(Index2Coord(start_idx), path_yaw);
-            if (occ == -1)
-            {
-                ROS_WARN("[Astar] Start point outside the map region.");
-                return false;
-            }
-        } while (occ);
+        if (clear(point + distance * outward) ||
+            clear(point + distance * left) || clear(point - distance * left))
+            return true;
     }
-
-    occ = checkOccupancy(Index2Coord(end_idx), path_yaw);
-    if (occ)
-    {
-        //ROS_WARN("End point is insdide an obstacle.");
-        do
-        {
-            end_pt += start_to_end * step_size_;
-            if (!Coord2Index(end_pt, end_idx))
-                return false;
-
-            occ = checkOccupancy(Index2Coord(end_idx), path_yaw);
-            if (occ == -1)
-            {
-                ROS_WARN("[Astar] End point outside the map region.");
-                return false;
-            }
-        } while (occ);
-    }
-
-    return true;
+    return false;
 }
 
-ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d end_pt)
+ASTAR_RET AStar::AstarSearch(double step_size, Vector3d start_pt, Vector3d end_pt,
+                          double start_yaw, double end_yaw)
 {
-    ros::Time time_1 = ros::Time::now();
+    const ros::SteadyTime deadline = ros::SteadyTime::now() + ros::WallDuration(0.20);
     ++rounds_;
+    gridPath_.clear();
 
+    const Vector3d chord = end_pt - start_pt;
+    if (!std::isfinite(step_size) || step_size <= 0.0 || !chord.allFinite() ||
+        chord.head<2>().squaredNorm() < 1e-12)
+        return ASTAR_RET::INIT_ERR;
+    const double chord_yaw = std::atan2(chord.y(), chord.x());
+    const Vector3d direction = chord.normalized();
     step_size_ = step_size;
-    inv_step_size_ = 1 / step_size;
-    center_ = (start_pt + end_pt) / 2;
+    inv_step_size_ = 1.0 / step_size;
+    center_ = (start_pt + end_pt) / 2.0;
 
     Vector3i start_idx, end_idx;
-    if (!ConvertToIndexAndAdjustStartEndPoints(start_pt, end_pt, start_idx, end_idx))
+    if (!findEndpoint(start_pt, -direction, std::isfinite(start_yaw) ? start_yaw : chord_yaw, start_idx))
     {
-        ROS_ERROR("Unable to handle the initial or end point, force return!");
+        ROS_WARN_THROTTLE(1., "SCAN A*: no clear start guide within 0.45 m (%.3f, %.3f, %.3f)",
+                         start_pt.x(), start_pt.y(), start_pt.z());
+        return ASTAR_RET::INIT_ERR;
+    }
+    if (!findEndpoint(end_pt, direction, std::isfinite(end_yaw) ? end_yaw : chord_yaw, end_idx))
+    {
+        ROS_WARN_THROTTLE(1., "SCAN A*: no clear end guide within 0.45 m (%.3f, %.3f, %.3f)",
+                         end_pt.x(), end_pt.y(), end_pt.z());
         return ASTAR_RET::INIT_ERR;
     }
 
@@ -173,8 +158,7 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
         double ratio = (sample_xy - search_start_xy).dot(search_xy_delta) / search_xy_len2;
         ratio = std::max(0.0, std::min(1.0, ratio));
 
-        const double z = search_start(2) + ratio * (search_end(2) - search_start(2));
-        return static_cast<int>((z - center_(2)) * inv_step_size_ + 0.5) + CENTER_IDX_(2);
+        return static_cast<int>(std::lround(start_idx.z() + ratio * (end_idx.z() - start_idx.z())));
     };
 
     // if ( start_pt(0) > -1 && start_pt(0) < 0 )
@@ -183,7 +167,7 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
     GridNodePtr startPtr = GridNodeMap_[start_idx(0)][start_idx(1)][start_idx(2)];
     GridNodePtr endPtr = GridNodeMap_[end_idx(0)][end_idx(1)][end_idx(2)];
 
-    std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> empty;
+    decltype(openSet_) empty;
     openSet_.swap(empty);
 
     GridNodePtr neighborPtr = NULL;
@@ -197,7 +181,7 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
     startPtr->fScore = getHeu(startPtr, endPtr);
     startPtr->state = GridNode::OPENSET; //put start node in open set
     startPtr->cameFrom = NULL;
-    openSet_.push(startPtr); //put start in open set
+    openSet_.push({startPtr->fScore, startPtr});
 
     double tentative_gScore;
 
@@ -205,8 +189,16 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
     while (!openSet_.empty())
     {
         num_iter++;
-        current = openSet_.top();
+        if (ros::SteadyTime::now() >= deadline)
+        {
+            ROS_WARN_THROTTLE(1., "SCAN A*: 200 ms search budget exhausted");
+            return ASTAR_RET::SEARCH_ERR;
+        }
+        const QueueEntry entry = openSet_.top();
         openSet_.pop();
+        current = entry.node;
+        if (current->state == GridNode::CLOSEDSET || entry.cost > current->fScore)
+            continue;
 
         // if ( num_iter < 10000 )
         //     cout << "current=" << current->index.transpose() << endl;
@@ -248,8 +240,6 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
                     continue; //in closed set.
                 }
 
-                neighborPtr->rounds = rounds_;
-
                 const double neighbor_yaw = std::atan2(static_cast<double>(dy), static_cast<double>(dx));
                 if (checkOccupancy(Index2Coord(neighborPtr->index), neighbor_yaw))
                 {
@@ -260,35 +250,19 @@ ASTAR_RET AStar::AstarSearch(const double step_size, Vector3d start_pt, Vector3d
                 double static_cost = sqrt(dx * dx + dy * dy + dz * dz);
                 tentative_gScore = current->gScore + static_cost;
 
-                if (!flag_explored)
+                if (!flag_explored || tentative_gScore < neighborPtr->gScore)
                 {
-                    //discover a new node
+                    neighborPtr->rounds = rounds_;
                     neighborPtr->state = GridNode::OPENSET;
                     neighborPtr->cameFrom = current;
                     neighborPtr->gScore = tentative_gScore;
                     neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
-                    openSet_.push(neighborPtr); //put neighbor in open set and record it.
-                }
-                else if (tentative_gScore < neighborPtr->gScore)
-                { //in open set and need update
-                    neighborPtr->cameFrom = current;
-                    neighborPtr->gScore = tentative_gScore;
-                    neighborPtr->fScore = tentative_gScore + getHeu(neighborPtr, endPtr);
+                    openSet_.push({neighborPtr->fScore, neighborPtr});
                 }
             }
-        ros::Time time_2 = ros::Time::now();
-        if ((time_2 - time_1).toSec() > 0.2)
-        {
-            ROS_WARN("Failed in A star path searching !!! 0.2 seconds time limit exceeded.");
-            return ASTAR_RET::SEARCH_ERR;
-        }
     }
 
-    ros::Time time_2 = ros::Time::now();
-
-    if ((time_2 - time_1).toSec() > 0.1)
-        ROS_WARN("Time consume in A star path finding is %.3fs, iter=%d", (time_2 - time_1).toSec(), num_iter);
-
+    ROS_WARN_THROTTLE(1., "SCAN A*: no connected guide path, expanded %d nodes", num_iter);
     return ASTAR_RET::SEARCH_ERR;
 }
 

@@ -45,7 +45,8 @@
     <param name="grid_map/map_sliding_thresh" value="0.2"/>
     <param name="grid_map/double_cylinder_radius" value="0.25" />
     <param name="grid_map/double_cylinder_offset" value="0.18" />
-    <param name="grid_map/obstacles_inflation_z_up" value="0.1" />
+    <!-- Obstacle-up expansion is the equivalent body-bottom clearance. -->
+    <param name="grid_map/obstacles_inflation_z_up" value="0.05" />
     <param name="grid_map/obstacles_inflation_z_down" value="0.1" />
     <param name="grid_map/body_height" value="0.4" />
 
@@ -81,22 +82,22 @@
 
     <!-- trajectory optimization -->
     <param name="optimization/lambda_smooth" value="1.0" type="double"/>
-    <param name="optimization/lambda_collision" value="1.0" type="double"/>
+    <param name="optimization/lambda_collision" value="1.5" type="double"/>
     <param name="optimization/lambda_feasibility" value="0.1" type="double"/>
     <param name="optimization/lambda_fitness" value="1.0" type="double"/>
     <param name="optimization/dist0" value="0.2" type="double"/>
     <param name="optimization/max_vel" value="$(arg max_vel)" type="double"/>
     <param name="optimization/vel_tolerance" value="1.0" type="double"/>
     <param name="optimization/max_acc" value="$(arg max_acc)" type="double"/>
-    <param name="optimization/acc_tolerance" value="1.0" type="double"/>
+    <param name="optimization/acc_tolerance" value="1.4" type="double"/>
 
   </node>
 
   <!-- trajectory tracking -->
   <param name="closed_loop_controller/time_forward" value="0.8" type="double"/>
-  <param name="closed_loop_controller/heading_error_threshold" value="0.8" type="double"/>
+  <param name="closed_loop_controller/heading_error_threshold" value="1.7453292519943295" type="double"/>
   <param name="closed_loop_controller/kp_pos" value="0.8" type="double"/>
-  <param name="closed_loop_controller/kp_yaw" value="1.5" type="double"/>
+  <param name="closed_loop_controller/kp_yaw" value="1.2" type="double"/>
   <param name="closed_loop_controller/max_vx" value="$(arg max_vel)" type="double"/>
   <param name="closed_loop_controller/max_vy" value="0.35" type="double"/>
   <param name="closed_loop_controller/max_vyaw" value="1.0" type="double"/>

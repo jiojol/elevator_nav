@@ -226,55 +226,40 @@ namespace scan_upstream_planner
     if (start_end_derivative.size() != 4)
     {
       cout << "[B-spline]:derivatives error." << endl;
+      return;
     }
 
     int K = point_set.size();
 
-    // write A
-    Eigen::Vector3d prow(3), vrow(3), arow(3);
-    prow << 1, 4, 1;
-    vrow << -1, 0, 1;
-    arow << 1, -2, 1;
+    // Boundary states are equalities. Fitting them as extra least-squares
+    // rows moves the start and changes its velocity/acceleration, especially
+    // on short stair segments. The optimizer fixes these six controls later,
+    // so a fitting error otherwise cannot be repaired by rebound/refinement.
+    ctrl_pts = Eigen::MatrixXd::Zero(3, K + 2);
+    for (int side = 0; side < 2; ++side)
+    {
+      const int center = side ? K : 1;
+      const Eigen::Vector3d p = side ? point_set.back() : point_set.front();
+      const Eigen::Vector3d v = start_end_derivative[side] * ts;
+      const Eigen::Vector3d a = start_end_derivative[2 + side] * ts * ts;
+      ctrl_pts.col(center) = p - a / 6.0;
+      ctrl_pts.col(center - 1) = ctrl_pts.col(center) - v + a / 2.0;
+      ctrl_pts.col(center + 1) = ctrl_pts.col(center) + v + a / 2.0;
+    }
+    const int interior = K - 4;
+    if (interior == 0)
+      return;
 
-    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(K + 4, K + 2);
-
-    for (int i = 0; i < K; ++i)
-      A.block(i, i, 1, 3) = (1 / 6.0) * prow.transpose();
-
-    A.block(K, 0, 1, 3) = (1 / 2.0 / ts) * vrow.transpose();
-    A.block(K + 1, K - 1, 1, 3) = (1 / 2.0 / ts) * vrow.transpose();
-
-    A.block(K + 2, 0, 1, 3) = (1 / ts / ts) * arow.transpose();
-    A.block(K + 3, K - 1, 1, 3) = (1 / ts / ts) * arow.transpose();
-
-    //cout << "A" << endl << A << endl << endl;
-
-    // write b
-    Eigen::VectorXd bx(K + 4), by(K + 4), bz(K + 4);
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(K, K + 2);
+    Eigen::MatrixXd samples(K, 3);
     for (int i = 0; i < K; ++i)
     {
-      bx(i) = point_set[i](0);
-      by(i) = point_set[i](1);
-      bz(i) = point_set[i](2);
+      A.block<1, 3>(i, i) << 1.0 / 6.0, 4.0 / 6.0, 1.0 / 6.0;
+      samples.row(i) = point_set[i].transpose();
     }
-
-    for (int i = 0; i < 4; ++i)
-    {
-      bx(K + i) = start_end_derivative[i](0);
-      by(K + i) = start_end_derivative[i](1);
-      bz(K + i) = start_end_derivative[i](2);
-    }
-
-    // solve Ax = b
-    Eigen::VectorXd px = A.colPivHouseholderQr().solve(bx);
-    Eigen::VectorXd py = A.colPivHouseholderQr().solve(by);
-    Eigen::VectorXd pz = A.colPivHouseholderQr().solve(bz);
-
-    // convert to control pts
-    ctrl_pts.resize(3, K + 2);
-    ctrl_pts.row(0) = px.transpose();
-    ctrl_pts.row(1) = py.transpose();
-    ctrl_pts.row(2) = pz.transpose();
+    const Eigen::MatrixXd residual = samples - A * ctrl_pts.transpose();
+    ctrl_pts.middleCols(3, interior) =
+        A.middleCols(3, interior).colPivHouseholderQr().solve(residual).transpose();
 
     // cout << "[B-spline]: parameterization ok." << endl;
   }

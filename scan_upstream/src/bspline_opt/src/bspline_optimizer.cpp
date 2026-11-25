@@ -130,7 +130,9 @@ namespace scan_upstream_planner
     {
       //cout << "in=" << in.transpose() << " out=" << out.transpose() << endl;
       Eigen::Vector3d in(init_points.col(segment_ids[i].first)), out(init_points.col(segment_ids[i].second));
-      ASTAR_RET ret = a_star_->AstarSearch(grid_map_->getResolution(), in, out);
+      ASTAR_RET ret = a_star_->AstarSearch(grid_map_->getResolution(), in, out,
+          estimateControlPointYaw(init_points, segment_ids[i].first),
+          estimateControlPointYaw(init_points, segment_ids[i].second));
       if (ret == ASTAR_RET::SUCCESS)
       {
         vector<Eigen::Vector3d> path = a_star_->getPath();
@@ -143,7 +145,7 @@ namespace scan_upstream_planner
       }
       else
       {
-        ROS_ERROR("a star error, force return!");
+        ROS_WARN_THROTTLE(1., "SCAN rebound: initial collision segment has no A* guide");
         return a_star_paths;
       }
     }
@@ -754,7 +756,7 @@ namespace scan_upstream_planner
         }
         if (j < 0) // fail to get the obs free point
         {
-          ROS_ERROR("ERROR! the drone is in obstacle. This should not happen.");
+          ROS_WARN_THROTTLE(1., "SCAN rebound: no free control point before occupied spline prefix (point %d)", i);
           in_id = 0;
         }
 
@@ -789,7 +791,9 @@ namespace scan_upstream_planner
       {
         /*** a star search ***/
         Eigen::Vector3d in(cps_.points.col(segment_ids[i].first)), out(cps_.points.col(segment_ids[i].second));
-        ASTAR_RET ret = a_star_->AstarSearch(grid_map_->getResolution(), in, out);
+        ASTAR_RET ret = a_star_->AstarSearch(grid_map_->getResolution(), in, out,
+            estimateControlPointYaw(cps_.points, segment_ids[i].first),
+            estimateControlPointYaw(cps_.points, segment_ids[i].second));
         if (ret == ASTAR_RET::SUCCESS)
         {
           vector<Eigen::Vector3d> path = a_star_->getPath();
@@ -811,7 +815,7 @@ namespace scan_upstream_planner
         }
         else
         {
-          ROS_ERROR("a star error");
+          ROS_WARN_THROTTLE(1., "SCAN rebound: collision segment has no A* guide");
           segment_ids.erase(segment_ids.begin() + i);
           i--;
         }

@@ -4,6 +4,7 @@
   <arg name="map_only" default="false"/>
   <arg name="start_lidar" default="true"/>
   <arg name="use_calibrated_mount" default="false"/>
+  <arg name="elevator_config" default=""/>
 
   <include file="$(find dog_nav_bringup)/launch/lidar.launch" if="$(arg start_lidar)">
     <arg name="driver_launch" value="msg_MID360.launch"/>
@@ -23,6 +24,7 @@
         name="lio_map_localizer" output="screen" required="true">
     <remap from="/initialpose" to="/lio_map_localizer/unused_initialpose" if="$(arg map_only)"/>
     <rosparam command="load" file="$(find dog_nav_bringup)/config/elevator_lio_localization.yaml"/>
+    <rosparam command="load" file="$(arg elevator_config)" if="$(eval arg('elevator_config') != '')"/>
     <param name="globalmap_pcd" value="$(arg globalmap_pcd)"/>
   </node>
 </launch>

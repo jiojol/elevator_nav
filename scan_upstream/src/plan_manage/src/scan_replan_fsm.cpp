@@ -9,6 +9,8 @@
 
 namespace
 {
+  constexpr double replan_retry_period = 0.15;
+
   std::string shellQuote(const std::string &value)
   {
     std::string quoted = "'";
@@ -42,9 +44,16 @@ namespace scan_upstream_planner
     replan_fail_count_ = 0;
     last_freeze_update_time_ = ros::Time::now();
 
+    ros::param::param("/closed_loop_controller/time_forward", turn_lookahead_, 0.8);
+    ros::param::param("/closed_loop_controller/heading_error_threshold", turn_threshold_, 0.8);
+    ros::param::param("/closed_loop_controller/kp_yaw", turn_kp_, 1.5);
+    ros::param::param("/closed_loop_controller/max_vyaw", turn_rate_, 1.0);
+    turn_rate_ = std::clamp(turn_rate_, 0.0, 1.0);  // Controller hard limit.
+
     /*  fsm param  */
     nh.param("fsm/navi_mode", navi_mode_, -1);
     nh.param("fsm/thresh_replan", replan_thresh_, -1.0);
+    nh.param("fsm/experimental_prefix_cruise_speed", prefix_cruise_speed_, 0.0);
     nh.param("fsm/thresh_no_replan", no_replan_thresh_, -1.0);
     nh.param("fsm/planning_horizon", planning_horizon_, -1.0);
     nh.param("fsm/emergency_time_", emergency_time_, 1.0);
@@ -118,6 +127,10 @@ namespace scan_upstream_planner
     controller_progress_sub_ = nh.subscribe("/planning/go2_execution_progress", 1,
                                            &SCANReplanFSM::executionProgressCallback, this);
 
+    ros::param::param("/integration/go2_rl", rl_waiting_for_odom_, false);
+    if (rl_waiting_for_odom_)
+      rl_handoff_sub_ = nh.subscribe("/go2_rl_nav/handoff", 1, &SCANReplanFSM::rlHandoffCallback, this);
+
     bspline_pub_ = nh.advertise<scan_upstream_planner::Bspline>("/planning/bspline", 10);
     data_disp_pub_ = nh.advertise<scan_upstream_planner::DataDisp>("/planning/data_display", 100);
     self_inflation_pub_ = nh.advertise<visualization_msgs::Marker>("self_inflation", 10, true);
@@ -134,6 +147,10 @@ namespace scan_upstream_planner
     else if (navi_mode_ == NAVI_MODE::REFERENCE_PATH)
     {
       path_sub_ = nh.subscribe("/initial_path", 1, &SCANReplanFSM::pathCallback, this);
+      goal_reached_sub_ = nh.subscribe("/planning/goal_reached", 10, &SCANReplanFSM::goalReachedCallback, this);
+      ros::param::param("/integration/marked_route", marked_route_, false);
+      if (marked_route_)
+        marked_turn_pub_ = nh.advertise<geometry_msgs::TwistStamped>("/planning/marked_final_turn", 1);
       free_map_sub_ = nh.subscribe("/plan_map/free", 1, &SCANReplanFSM::freeMapCallback, this);
     }
     else
@@ -383,25 +400,35 @@ namespace scan_upstream_planner
   {
     if (!msg || msg->poses.empty())
     {
-      ROS_WARN_THROTTLE(1.0, "[pathCallback] Received empty /initial_path, ignore.");
+      pending_reference_path_.reset();
+      if (marked_route_ && reference_goal_active_ && msg && msg->header.stamp >= reference_path_header_.stamp)
+      {
+        const std_msgs::HeaderConstPtr header(new std_msgs::Header(reference_path_header_));
+        goalReachedCallback(header);
+      }
       return;
     }
 
-    if (!have_odom_)
+    if (!msg->header.stamp.isZero() && msg->header.stamp <= reference_path_header_.stamp)
+      return;
+    if (!freshReferenceInputs())
     {
-      ROS_WARN_THROTTLE(1.0, "[pathCallback] No odometry yet, cannot plan global trajectory.");
+      if (!pending_reference_path_ || msg->header.stamp >= pending_reference_path_->header.stamp)
+        pending_reference_path_ = msg;
+      ROS_INFO_THROTTLE(2.0, "SCAN: waiting for fresh pose and occupancy before installing the reference path");
       return;
     }
+    pending_reference_path_.reset();
 
     trigger_ = true;
     ingress_direction_.setZero();
-    const auto &goal = msg->poses.back().pose;
-    const Eigen::Vector3d endpoint(goal.position.x, goal.position.y, goal.position.z);
+    const auto &ingress_pose = msg->poses.back().pose;
+    const Eigen::Vector3d endpoint(ingress_pose.position.x, ingress_pose.position.y, ingress_pose.position.z);
     for (const auto &cabin : elevator_cabins_)
     {
       if ((endpoint - cabin).norm() < .03)
       {
-        const auto &q = goal.orientation;
+        const auto &q = ingress_pose.orientation;
         const double yaw = std::atan2(2. * (q.w*q.z + q.x*q.y), 1. - 2. * (q.y*q.y + q.z*q.z));
         ingress_direction_ = Eigen::Vector2d(std::cos(yaw), std::sin(yaw));
         break;
@@ -435,10 +462,32 @@ namespace scan_upstream_planner
     if ((waypoints.back() - end_pt_).norm() > 1e-6)
       waypoints.push_back(end_pt_);
 
-    bool success = planGlobalTrajByWaypoints(waypoints);
+    bool at_mark = false;
+    const Eigen::Vector3d goal = end_pt_;
+    double goal_yaw = 0.0;
+    if (marked_route_)
+    {
+      const auto &q = msg->poses.back().pose.orientation;
+      const Eigen::Quaterniond goal_orientation(q.w, q.x, q.y, q.z);
+      if (!goal_orientation.coeffs().allFinite() || goal_orientation.norm() < 1e-9)
+        return;
+      const auto rotation = goal_orientation.normalized().toRotationMatrix();
+      goal_yaw = std::atan2(rotation(1, 0), rotation(0, 0));
+      const Eigen::Vector3d delta = odom_pos_ - goal;
+      at_mark = delta.head<2>().norm() <= 0.15 && std::abs(delta.z()) <= 0.18;
+    }
 
+    const bool success = at_mark || planGlobalTrajByWaypoints(waypoints);
     if (success)
     {
+      reference_path_header_ = msg->header;
+      reference_goal_active_ = true;
+      if (marked_route_)
+      {
+        marked_goal_ = goal;
+        marked_goal_yaw_ = goal_yaw;
+      }
+      stopped_conflict_.reset();
       reference_route_.clear();
       reference_distance_.clear();
       last_failed_full_replan_ = ros::Time();
@@ -454,7 +503,12 @@ namespace scan_upstream_planner
         }
       }
       /*** FSM ***/
-      if (exec_state_ == WAIT_TARGET)
+      if (at_mark)
+      {
+        trigger_ = have_target_ = have_new_target_ = false;
+        changeFSMExecState(WAIT_TARGET, "MARKED_POSITION_REACHED");
+      }
+      else if (exec_state_ == WAIT_TARGET)
       {
         changeFSMExecState(GEN_NEW_TRAJ, "TRIG");
       }
@@ -471,8 +525,37 @@ namespace scan_upstream_planner
     }
   }
 
+  void SCANReplanFSM::goalReachedCallback(const std_msgs::HeaderConstPtr &msg)
+  {
+    if (!reference_goal_active_ || msg->stamp.isZero() ||
+        msg->stamp != reference_path_header_.stamp || msg->frame_id != reference_path_header_.frame_id)
+      return;
+
+    reference_goal_active_ = false;
+    trigger_ = have_target_ = have_new_target_ = false;
+    flag_escape_emergency_ = need_hover_stop_ = holding_emergency_stop_ = false;
+    replan_fail_count_ = 0;
+    last_failed_full_replan_ = ros::Time();
+    short_replan_time_.reset();
+    stopped_conflict_.reset();
+    reference_route_.clear();
+    reference_distance_.clear();
+    // Retire the trajectory without recycling its ID. Queued controller
+    // progress for this curve cannot revive it before the next plan.
+    auto &trajectory = planner_manager_->local_data_;
+    trajectory.start_time_ = ros::Time();
+    trajectory.duration_ = 0.0;
+    controller_traj_id_ = -1;
+    controller_progress_at_ = ros::Time();
+    changeFSMExecState(WAIT_TARGET, "GOAL_REACHED");
+  }
+
   void SCANReplanFSM::odometryCallback(const nav_msgs::OdometryConstPtr &msg)
   {
+    if (navi_mode_ == NAVI_MODE::REFERENCE_PATH && have_target_ &&
+        !odom_stamp_.isZero() && (msg->header.stamp - odom_stamp_).toSec() > .5)
+      reference_inputs_paused_ = true;
+    odom_stamp_ = msg->header.stamp;
     odom_pos_(0) = msg->pose.pose.position.x;
     odom_pos_(1) = msg->pose.pose.position.y;
     odom_pos_(2) = msg->pose.pose.position.z;
@@ -499,6 +582,13 @@ namespace scan_upstream_planner
     publishSelfInflationMarker();
   }
 
+  void SCANReplanFSM::rlHandoffCallback(const std_msgs::TimeConstPtr &msg)
+  {
+    // Zero pauses the FSM. A nonzero request requires newer measured odometry.
+    rl_handoff_stamp_ = msg->data;
+    rl_waiting_for_odom_ = true;
+  }
+
   void SCANReplanFSM::go2ExecutionFrozenCallback(const std_msgs::BoolConstPtr &msg)
   {
     go2_execution_frozen_ = msg->data;
@@ -507,7 +597,7 @@ namespace scan_upstream_planner
   void SCANReplanFSM::executionProgressCallback(const std_msgs::Float64MultiArrayConstPtr &msg)
   {
     const auto &info = planner_manager_->local_data_;
-    if (msg->data.size() != 2 || msg->data[0] != static_cast<double>(info.traj_id_) ||
+    if (info.start_time_.isZero() || msg->data.size() != 2 || msg->data[0] != static_cast<double>(info.traj_id_) ||
         !std::isfinite(msg->data[1]) || msg->data[1] < 0.0 ||
         msg->data[1] > info.duration_ + 1e-6)
       return;
@@ -552,8 +642,10 @@ namespace scan_upstream_planner
   void SCANReplanFSM::publishSelfInflationMarker()
   {
     const double radius = std::max(0.0, self_double_cylinder_radius_);
-    const double z_up = std::max(0.0, self_inflation_z_up_);
-    const double z_down = std::max(0.0, self_inflation_z_down_);
+    // Reflect obstacle inflation about the query point to display the
+    // equivalent body envelope: obstacle-up is body-down, and vice versa.
+    const double z_up = std::max(0.0, self_inflation_z_down_);
+    const double z_down = std::max(0.0, self_inflation_z_up_);
     const double height = std::max(1e-3, z_up + z_down);
 
     visualization_msgs::Marker marker;
@@ -576,6 +668,13 @@ namespace scan_upstream_planner
     center(2) += 0.5 * (z_up - z_down);
 
     Eigen::Vector3d heading(std::cos(getOdomYaw()), std::sin(getOdomYaw()), 0.0);
+    // Match the measured-body probe axis used by GridMap on stair inclines.
+    const Eigen::Vector3d normal = odom_orient_.toRotationMatrix().col(2);
+    if (normal.z() > 0.3)
+    {
+      heading.z() = -normal.head<2>().dot(heading.head<2>()) / normal.z();
+      heading.normalize();
+    }
     Eigen::Vector3d front = center + self_double_cylinder_offset_ * heading;
     Eigen::Vector3d rear = center - self_double_cylinder_offset_ * heading;
 
@@ -618,8 +717,87 @@ namespace scan_upstream_planner
     cout << "[FSM]: state: " + state_str[int(exec_state_)] << endl;
   }
 
+  bool SCANReplanFSM::freshReferenceInputs() const
+  {
+    const auto &map = planner_manager_->grid_map_;
+    if (!have_odom_ || !map || odom_stamp_.isZero() || map->cloudStamp().isZero())
+      return false;
+    const auto now = ros::Time::now();
+    const double pose_age = (now - odom_stamp_).toSec();
+    const double map_age = (now - map->cloudStamp()).toSec();
+    return pose_age >= -.1 && pose_age <= .5 && map_age >= -.1 && map_age <= 1.;
+  }
+
   void SCANReplanFSM::execFSMCallback(const ros::TimerEvent &e)
   {
+    if (!collision_stop_at_.isZero())
+    {
+      const ros::Time now = ros::Time::now();
+      const double pose_age = (now - odom_stamp_).toSec();
+      const bool waiting_for_cloud = navi_mode_ == NAVI_MODE::REFERENCE_PATH &&
+          planner_manager_->grid_map_->cloudStamp() <= collision_stop_at_;
+      if ((now - collision_stop_at_).toSec() < .35 || !have_odom_ ||
+          pose_age < -.1 || pose_age > .5 || odom_vel_.head<2>().norm() > .10 || waiting_for_cloud)
+        return;
+      collision_stop_at_ = ros::Time();
+    }
+    if (rl_waiting_for_odom_)
+    {
+      if (rl_handoff_stamp_.isZero() || odom_stamp_ <= rl_handoff_stamp_)
+        return;
+      rl_waiting_for_odom_ = false;
+      if (have_target_)
+      {
+        auto &trajectory = planner_manager_->local_data_;
+        trajectory.start_time_ = ros::Time();
+        trajectory.duration_ = 0.0;
+        controller_traj_id_ = -1;
+        controller_progress_at_ = ros::Time();
+        holding_emergency_stop_ = need_hover_stop_ = false;
+        replan_fail_count_ = 0;
+        last_failed_full_replan_ = ros::Time();
+        have_new_target_ = true;
+        changeFSMExecState(GEN_NEW_TRAJ, "RL_HANDOFF");
+      }
+    }
+
+    if (navi_mode_ == NAVI_MODE::REFERENCE_PATH)
+    {
+      if (have_target_ || pending_reference_path_)
+      {
+        if (!freshReferenceInputs())
+        {
+          reference_inputs_paused_ = true;
+          ROS_WARN_THROTTLE(2., "SCAN planning paused: map pose or lidar occupancy is stale; goal retained");
+          return;
+        }
+        const auto epoch = planner_manager_->grid_map_->alignmentEpoch();
+        const bool new_alignment = reference_alignment_epoch_ && epoch != reference_alignment_epoch_;
+        reference_alignment_epoch_ = epoch;
+        if ((reference_inputs_paused_ || new_alignment) && have_target_)
+        {
+          auto &trajectory = planner_manager_->local_data_;
+          trajectory.start_time_ = ros::Time();
+          trajectory.duration_ = 0.0;
+          controller_traj_id_ = -1;
+          controller_progress_at_ = ros::Time();
+          holding_emergency_stop_ = need_hover_stop_ = false;
+          stopped_conflict_.reset();
+          short_replan_time_.reset();
+          replan_fail_count_ = 0;
+          last_failed_full_replan_ = ros::Time();
+          have_new_target_ = true;
+          changeFSMExecState(GEN_NEW_TRAJ, "FRESH_INPUTS");
+        }
+        reference_inputs_paused_ = false;
+        if (pending_reference_path_)
+        {
+          const auto path = pending_reference_path_;
+          pathCallback(path);
+        }
+      }
+    }
+
     updateLocalTrajTimeFreeze();
 
     static int fsm_num = 0;
@@ -663,6 +841,10 @@ namespace scan_upstream_planner
 
     case GEN_NEW_TRAJ:
     {
+      const auto now = ros::Time::now();
+      if (holding_emergency_stop_ && !last_failed_full_replan_.isZero() && now >= last_failed_full_replan_ &&
+          (now - last_failed_full_replan_).toSec() < replan_retry_period)
+        break;
       setStartStateFromOdomOrCurrentTraj();
 
       // Eigen::Vector3d rot_x = odom_orient_.toRotationMatrix().block(0, 0, 3, 1);
@@ -686,6 +868,8 @@ namespace scan_upstream_planner
       }
       else
       {
+        if (holding_emergency_stop_)
+          last_failed_full_replan_ = now;
         replan_fail_count_++;
         changeFSMExecState(GEN_NEW_TRAJ, "FSM");
       }
@@ -699,7 +883,7 @@ namespace scan_upstream_planner
       // segment. A verified shorter segment can hand off to another short one.
       const auto now = ros::Time::now();
       if (!last_failed_full_replan_.isZero() && now >= last_failed_full_replan_ &&
-          (now - last_failed_full_replan_).toSec() < 0.15)
+          (now - last_failed_full_replan_).toSec() < replan_retry_period)
         break;
 
       const bool full_plan = planFromCurrentTraj();
@@ -728,12 +912,9 @@ namespace scan_upstream_planner
       ros::Time time_now = ros::Time::now();
       double t_cur = (time_now - info->start_time_).toSec();
       t_cur = min(info->duration_, t_cur);
-      const bool needs_successor = navi_mode_ == NAVI_MODE::REFERENCE_PATH &&
-                                   (info->position_traj_.evaluateDeBoorT(info->duration_) - end_pt_).norm() > 0.20;
-      if ((short_segment_active_ && t_cur >= info->duration_ * 0.35) ||
-          (needs_successor && info->duration_ - t_cur <= emergency_time_))
+      if (short_replan_time_ && t_cur >= *short_replan_time_)
       {
-        changeFSMExecState(REPLAN_TRAJ, "SEGMENT_HANDOFF");
+        changeFSMExecState(REPLAN_TRAJ, "SHORT_SEGMENT");
         return;
       }
 
@@ -741,7 +922,7 @@ namespace scan_upstream_planner
 
       // If the measured body has moved beyond the current segment, replan
       // from odometry before the old swept path can become the stop trigger.
-      constexpr double reanchor_tracking_gap = 0.40;
+      constexpr double reanchor_tracking_gap = 0.45;
       if (navi_mode_ == NAVI_MODE::REFERENCE_PATH &&
           (pos - odom_pos_).head<2>().norm() > reanchor_tracking_gap)
       {
@@ -817,8 +998,16 @@ namespace scan_upstream_planner
       }
       else
       {
-        if (enable_fail_safe_ && !need_hover_stop_ && odom_vel_.norm() < 0.1)
-          changeFSMExecState(GEN_NEW_TRAJ, "FSM");
+        if (enable_fail_safe_ && !need_hover_stop_)
+        {
+          // A stop command does not guarantee that estimated velocity becomes
+          // zero (stair slip, tracking lag, or recorded feedback). Keep solving
+          // from fresh measured state; GEN_NEW_TRAJ rate-limits retries and
+          // retains the stop until a collision/dynamics-checked curve commits.
+          const double pose_age = (ros::Time::now() - odom_stamp_).toSec();
+          if (have_odom_ && pose_age >= -0.1 && pose_age <= 0.5)
+            changeFSMExecState(GEN_NEW_TRAJ, "STOP_RETRY");
+        }
         else if (enable_fail_safe_ && need_hover_stop_ && odom_vel_.norm() < 0.1)
         {
           ROS_INFO("Exiting EMERGENCY_STOP. Switching to WAIT_TARGET. Need a new target point.");
@@ -863,17 +1052,21 @@ namespace scan_upstream_planner
 
     if (navi_mode_ == NAVI_MODE::REFERENCE_PATH)
     {
-      start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
-      start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
-      start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
-
+      const bool previous_finished = t_cur >= info->duration_ - 1e-3;
+      if (!previous_finished)
+        start_pt_ = info->position_traj_.evaluateDeBoorT(t_cur);
       constexpr double max_tracking_gap_xy = 0.25;
-      const bool reanchor = (start_pt_ - odom_pos_).head<2>().norm() > max_tracking_gap_xy;
+      const bool reanchor = previous_finished || (start_pt_ - odom_pos_).head<2>().norm() > max_tracking_gap_xy;
       if (reanchor)
       {
         start_pt_ = odom_pos_;
         start_vel_ = odom_vel_;
         start_acc_.setZero();
+      }
+      else
+      {
+        start_vel_ = info->velocity_traj_.evaluateDeBoorT(t_cur);
+        start_acc_ = info->acceleration_traj_.evaluateDeBoorT(t_cur);
       }
 
       bool success = callReboundReplan(reanchor, false);
@@ -950,8 +1143,53 @@ namespace scan_upstream_planner
     }
   }
 
+  void SCANReplanFSM::publishMarkedTurn()
+  {
+    if (!marked_route_ || !reference_goal_active_ || !freshReferenceInputs() ||
+        odom_vel_.norm() >= 0.08)
+      return;
+    const Eigen::Vector3d displacement = odom_pos_ - marked_goal_;
+    if (displacement.head<2>().norm() > 0.15 || std::abs(displacement.z()) > 0.18)
+      return;
+    // Align the final heading only on a level stance. Preserve the swept
+    // footprint check for the complete remaining turn plus a small overrun.
+    if (odom_orient_.toRotationMatrix()(2, 2) < std::cos(12.0 * M_PI / 180.0))
+      return;
+    const double yaw = getOdomYaw();
+    const double error = std::remainder(marked_goal_yaw_ - yaw, 2.0 * M_PI);
+    if (std::abs(error) <= 8.0 * M_PI / 180.0)
+      return;
+    const double sweep = error + std::copysign(0.08, error);
+    const int steps = static_cast<int>(std::ceil(std::abs(sweep) / 0.05));
+    const auto &map = planner_manager_->grid_map_;
+    for (int step = 0; step <= steps; ++step)
+    {
+      const double heading = yaw + sweep * static_cast<double>(step) / steps;
+      if (map->getInflateOccupancy(odom_pos_, heading) != 0 ||
+          !bodyInsideFree(odom_pos_, heading, marked_goal_.z() - body_height_))
+      {
+        geometry_msgs::TwistStamped hold;
+        hold.header = reference_path_header_;
+        marked_turn_pub_.publish(hold);
+        return;
+      }
+    }
+    geometry_msgs::TwistStamped turn;
+    turn.header = reference_path_header_;
+    const double limit = std::min(turn_rate_, 0.35);
+    turn.twist.angular.z = std::clamp(error, -limit, limit);
+    marked_turn_pub_.publish(turn);
+  }
+
   void SCANReplanFSM::checkCollisionCallback(const ros::TimerEvent &e)
   {
+    publishMarkedTurn();
+    if (rl_waiting_for_odom_)
+      return;
+    if (navi_mode_ == NAVI_MODE::REFERENCE_PATH &&
+        (reference_inputs_paused_ || !freshReferenceInputs() ||
+         planner_manager_->grid_map_->alignmentEpoch() != reference_alignment_epoch_))
+      return;
     updateLocalTrajTimeFreeze();
 
     LocalTrajData *info = &planner_manager_->local_data_;
@@ -977,31 +1215,22 @@ namespace scan_upstream_planner
       const int occupancy = map->getInflateOccupancy(pos, estimateYawFromSegment(pos, pos_next));
       if (occupancy != 0)
       {
-        // A shorter forward segment can remain usable even if the normal
-        // horizon reaches the blocked section.
-        if (planFromCurrentTraj() || (t - t_cur < emergency_time_ && tryShortForwardPlan()))
+        if (t - t_cur < emergency_time_)
         {
+          ROS_WARN("Predicted trajectory conflict. emergency stop: ahead=%.3fs occupancy=%d "
+                   "query=(%.3f, %.3f, %.3f) measured_body=(%.3f, %.3f, %.3f)",
+                   t - t_cur, occupancy, pos.x(), pos.y(), pos.z(), odom_pos_.x(), odom_pos_.y(), odom_pos_.z());
+          stopped_conflict_ = pos;
+          collision_stop_at_ = ros::Time::now();
+          changeFSMExecState(EMERGENCY_STOP, "SAFETY");
+          callEmergencyStop(odom_pos_);
+          flag_escape_emergency_ = false;
+        }
+        else if (planFromCurrentTraj())
           changeFSMExecState(EXEC_TRAJ, "SAFETY");
-          return;
-        }
         else
-        {
-          if (t - t_cur < emergency_time_) // 0.8s of emergency time
-          {
-            ROS_WARN("Predicted trajectory conflict. emergency stop: ahead=%.3fs occupancy=%d "
-                     "query=(%.3f, %.3f, %.3f) measured_body=(%.3f, %.3f, %.3f)",
-                     t - t_cur, occupancy, pos.x(), pos.y(), pos.z(), odom_pos_.x(), odom_pos_.y(), odom_pos_.z());
-            flag_escape_emergency_ = true;
-            changeFSMExecState(EMERGENCY_STOP, "SAFETY");
-          }
-          else
-          {
-            //ROS_WARN("current traj in collision, replan.");
-            changeFSMExecState(REPLAN_TRAJ, "SAFETY");
-          }
-          return;
-        }
-        break;
+          changeFSMExecState(REPLAN_TRAJ, "SAFETY");
+        return;
       }
     }
   }
@@ -1032,8 +1261,9 @@ namespace scan_upstream_planner
     return best_progress;
   }
 
-  bool SCANReplanFSM::followsStairProgress(UniformBspline &candidate) const
+  bool SCANReplanFSM::followsStairProgress(UniformBspline &candidate, bool &stair) const
   {
+    stair = false;
     if (navi_mode_ != NAVI_MODE::REFERENCE_PATH || reference_distance_.size() < 2)
       return true;
 
@@ -1053,6 +1283,7 @@ namespace scan_upstream_planner
     constexpr double stair_elevation_span = 0.30;
     if (max_z - min_z < stair_elevation_span)
       return true;
+    stair = true;
 
     const Eigen::Vector3d initial = candidate.evaluateDeBoorT(0.0);
     const double duration = candidate.getTimeSum();
@@ -1069,6 +1300,28 @@ namespace scan_upstream_planner
         body_heading.dot(route_heading.normalized()) > std::cos(0.8) &&
         departure.dot(route_heading) < 0.0)
       return false;
+
+    // A short reversal can be below the arc-length tolerance and still
+    // demand a large turn in the next control update. Only apply the tighter
+    // heading check on the flight, so turns on a level landing remain possible.
+    const bool aligned_with_flight = route_heading.norm() > 0.05 &&
+        body_heading.dot(route_heading.normalized()) > std::cos(0.8);
+    if (aligned_with_flight)
+    {
+      const double preview_end = std::min(2.0, duration);
+      for (double t = 0.0; t <= preview_end; t += 0.1)
+      {
+        const Eigen::Vector3d position = candidate.evaluateDeBoorT(t);
+        const double progress = referenceProgress(position, lower, upper);
+        const Eigen::Vector3d guide = referencePosition(progress + 0.30) -
+                                     referencePosition(progress - 0.30);
+        if (std::abs(guide.z()) < 0.09 || guide.head<2>().norm() < 0.10)
+          continue;
+        const Eigen::Vector2d direction = headingPreview(candidate, t, duration, lookahead, position.head<2>());
+        if (!direction.isZero(1e-9) && direction.normalized().dot(guide.head<2>().normalized()) < std::cos(1.1))
+          return false;
+      }
+    }
 
     // Compare arc length along the reference rather than a fixed XY bearing,
     // so climbing the next flight after a landing is still forward progress.
@@ -1098,6 +1351,30 @@ namespace scan_upstream_planner
     const double fraction = (progress - reference_distance_[i - 1]) /
                             (reference_distance_[i] - reference_distance_[i - 1]);
     return (1.0 - fraction) * reference_route_[i - 1] + fraction * reference_route_[i];
+  }
+
+  // Re-seed along this flight with the original endpoints. Preserve the
+  // polynomial seed's arc-length fractions so its acceleration ramp is kept.
+  void SCANReplanFSM::shapeForwardSeed(std::vector<Eigen::Vector3d> &seed) const
+  {
+    if (seed.size() < 3)
+      return;
+    const double total = reference_distance_.back();
+    const double start = referenceProgress(seed.front(), 0.0, total);
+    const double end = referenceProgress(seed.back(), start, std::min(total, start + planning_horizon_ + 1.0));
+    std::vector<double> arc(seed.size(), 0.0);
+    for (size_t i = 1; i < seed.size(); ++i)
+      arc[i] = arc[i - 1] + (seed[i] - seed[i - 1]).norm();
+    if (arc.back() < 0.1 || end <= start)
+      return;
+    const Eigen::Vector2d entry = (seed.front() - referencePosition(start)).head<2>();
+    const Eigen::Vector2d exit = (seed.back() - referencePosition(end)).head<2>();
+    for (size_t i = 1; i + 1 < seed.size(); ++i)
+    {
+      const double u = arc[i] / arc.back();
+      seed[i].head<2>() = referencePosition(start + u * (end - start)).head<2>() +
+                          (1.0 - u) * entry + u * exit;
+    }
   }
 
   void SCANReplanFSM::shapeReferenceHeight(std::vector<Eigen::Vector3d> &seed) const
@@ -1184,6 +1461,40 @@ namespace scan_upstream_planner
     return true;
   }
 
+  double SCANReplanFSM::shortReplanTime(UniformBspline &curve)
+  {
+    const double duration = curve.getTimeSum();
+    const double halfway = 0.5 * duration;
+    const double latest = duration - 3.0 * replan_retry_period;
+    const Eigen::Vector2d chord =
+        (curve.evaluateDeBoorT(duration) - curve.evaluateDeBoorT(0.0)).head<2>();
+    if (latest <= halfway || chord.norm() < 0.05)
+      return halfway;
+
+    // Let the recovery maneuver make progress first. Defer its usual
+    // handoff only if the checked suffix has a faster forward interval.
+    const Eigen::Vector2d forward = chord.normalized();
+    const auto forward_speed = [&](double t) {
+      const Eigen::Vector2d step =
+          (curve.evaluateDeBoorT(t + replan_retry_period) - curve.evaluateDeBoorT(t)).head<2>();
+      return forward.dot(step) / replan_retry_period;
+    };
+    const double initial_speed = forward_speed(halfway);
+    const int samples = std::clamp(static_cast<int>(std::ceil((latest - halfway) / 0.05)), 1, 128);
+    double best_time = halfway, best_speed = initial_speed;
+    for (int i = 1; i <= samples; ++i)
+    {
+      const double t = halfway + (latest - halfway) * i / samples;
+      const double speed = forward_speed(t);
+      if (speed > best_speed)
+      {
+        best_time = t;
+        best_speed = speed;
+      }
+    }
+    return best_speed > std::max(0.0, initial_speed) + 0.05 ? best_time : halfway;
+  }
+
   bool SCANReplanFSM::tryShortForwardPlan()
   {
     if (navi_mode_ != NAVI_MODE::REFERENCE_PATH || reference_distance_.size() < 2)
@@ -1192,19 +1503,78 @@ namespace scan_upstream_planner
     start_pt_ = odom_pos_;
     start_vel_ = odom_vel_;
     start_acc_.setZero();
-    // One horizon may straddle a stair edge. Try a closer target if the
-    // first segment cannot be checked all the way to its endpoint.
-    for (const double horizon : {0.9, 0.55, 0.35})
+    double preferred_side = 0.0;
+    if (holding_emergency_stop_ && stopped_conflict_)
+    {
+      const double total = reference_distance_.back();
+      const double begin = referenceProgress(odom_pos_, 0.0, total);
+      const double conflict = referenceProgress(*stopped_conflict_, std::max(0.0, begin - 0.5),
+                                                std::min(total, begin + planning_horizon_));
+      const Eigen::Vector2d along =
+          (referencePosition(conflict + 0.20) - referencePosition(conflict - 0.20)).head<2>();
+      const Eigen::Vector2d offset = (*stopped_conflict_ - referencePosition(conflict)).head<2>();
+      const double side = along.x() * offset.y() - along.y() * offset.x();
+      if (along.norm() > 1e-6 && std::abs(side / along.norm()) >= 0.05)
+        preferred_side = side < 0.0 ? 1.0 : -1.0;
+    }
+
+    // Keep the collision-guided candidates and add a checked, centered
+    // reference candidate if none has a usable endpoint around the landing.
+    if (preferred_side != 0.0 && !free_cells_.empty())
+      for (double horizon : {1.2, 0.9, 0.55, 0.35})
+        for (double offset : {0.26, 0.16})
+          if (callReboundReplan(true, false, horizon, preferred_side * offset))
+            return true;
+
+    for (double horizon : {0.9, 0.55, 0.35})
     {
       if (callReboundReplan(true, false, horizon))
         return true;
       if (free_cells_.empty())
         continue;
-      for (const double lateral : {0.16, -0.16, 0.26, -0.26})
-        if (callReboundReplan(true, false, horizon, lateral))
+      for (double lateral : {0.16, -0.16, 0.26, -0.26})
+        if (preferred_side * lateral <= 0.0 && callReboundReplan(true, false, horizon, lateral))
           return true;
     }
+
+    for (double horizon : {0.70, 0.42})
+      if (callReboundReplan(true, false, horizon, 0.0, true))
+        return true;
     return false;
+  }
+
+  bool SCANReplanFSM::handoffClear(UniformBspline &candidate, bool entire_curve) const
+  {
+    const auto map = planner_manager_->grid_map_;
+    const double yaw = getOdomYaw();
+    const Eigen::Vector3d start = candidate.evaluateDeBoorT(0.0);
+    const Eigen::Vector3d gap = start - odom_pos_;
+    const int steps = std::max(1, static_cast<int>(std::ceil(gap.norm() / (0.5 * map->getResolution()))));
+    for (int step = 0; step <= steps; ++step)
+      if (map->getInflateOccupancy(odom_pos_ + gap * (static_cast<double>(step) / steps), yaw) != 0)
+        return false;
+
+    const auto clear = [&](const Eigen::Vector3d &point, double heading) {
+      return map->getInflateOccupancy(point, heading) == 0;
+    };
+    if (!previewTurns(candidate, yaw, turn_lookahead_, turn_threshold_, turn_kp_, turn_rate_, clear).clear)
+      return false;
+
+    // The execution collision timer also queries the trajectory tangent.
+    // Check its first normal handoff interval with that same footprint.
+    const double duration = candidate.getTimeSum();
+    const int samples = std::max(1, static_cast<int>(std::ceil(duration / 0.01)));
+    for (int i = 0; i <= samples; ++i)
+    {
+      const double t = duration * i / samples;
+      const Eigen::Vector3d pos = candidate.evaluateDeBoorT(t);
+      const Eigen::Vector3d next = candidate.evaluateDeBoorT(std::min(t + 0.01, duration));
+      if (!clear(pos, estimateYawFromSegment(pos, next)))
+        return false;
+      if (!entire_curve && (pos - start).norm() >= replan_thresh_)
+        break;
+    }
+    return true;
   }
 
   bool SCANReplanFSM::shortTrajectoryClear(UniformBspline &candidate, bool check_free_band) const
@@ -1217,20 +1587,6 @@ namespace scan_upstream_planner
     const double upper = std::min(total, origin + planning_horizon_ + 1.0);
     if (referenceProgress(candidate.evaluateDeBoorT(duration), lower, upper) - origin < 0.20)
       return false;
-
-    const Eigen::Vector3d initial = candidate.evaluateDeBoorT(0.0);
-    const double yaw_now = getOdomYaw();
-    double lookahead = 0.8;
-    ros::param::getCached("/closed_loop_controller/time_forward", lookahead);
-    const Eigen::Vector2d departure = headingPreview(candidate, 0.0, duration, lookahead, initial.head<2>());
-    const double yaw_reference = departure.isZero(1e-9) ? yaw_now : std::atan2(departure.y(), departure.x());
-    const double yaw_delta = std::atan2(std::sin(yaw_reference - yaw_now), std::cos(yaw_reference - yaw_now));
-    const int rotation_samples = std::max(1, static_cast<int>(std::ceil(std::abs(yaw_delta) / 0.08)));
-    for (int i = 0; i <= rotation_samples; ++i)
-    {
-      if (map->getInflateOccupancy(odom_pos_, yaw_now + yaw_delta * i / rotation_samples) != 0)
-        return false;
-    }
 
     const int samples = std::max(1, static_cast<int>(std::ceil(duration / 0.025)));
     for (int i = 0; i <= samples; ++i)
@@ -1253,6 +1609,220 @@ namespace scan_upstream_planner
     return true;
   }
 
+  bool SCANReplanFSM::solveLocalCandidate(UniformBspline &out, bool use_poly, bool randomize,
+                                        bool forward_seed, bool short_segment, bool lateral, bool &stair)
+  {
+    return planner_manager_->reboundReplan(
+          start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_,
+          use_poly, randomize, out, replan_thresh_,
+          !short_segment && !holding_emergency_stop_ && ingress_direction_.isZero() &&
+              navi_mode_ == NAVI_MODE::REFERENCE_PATH &&
+              (local_target_pt_ - end_pt_).norm() > no_replan_thresh_ ? prefix_cruise_speed_ : 0.0,
+          [&](std::vector<Eigen::Vector3d> &seed) {
+            if (forward_seed)
+              shapeForwardSeed(seed);
+            shapeReferenceHeight(seed);
+          },
+          [&](UniformBspline &candidate) {
+            if (!followsElevatorIngress(candidate))
+            {
+              ROS_WARN_THROTTLE(1.0, "Rejecting local trajectory that turns away from the elevator during ingress.");
+              return false;
+            }
+            bool candidate_is_stair = false;
+            if (!handoffClear(candidate) || !followsStairProgress(candidate, candidate_is_stair))
+              return false;
+            if ((forward_seed || short_segment) && !shortTrajectoryClear(candidate, forward_seed || lateral))
+              return false;
+            stair = candidate_is_stair;
+            return true;
+          },
+          [&](UniformBspline &candidate) { return handoffClear(candidate, true); });
+  }
+
+  bool SCANReplanFSM::selectStairCandidate(UniformBspline &selected, double &short_horizon)
+  {
+    const double yaw = getOdomYaw();
+    const auto unobstructed = [&](const Eigen::Vector3d &p, double heading) {
+      return planner_manager_->grid_map_->getInflateOccupancy(p, heading) == 0;
+    };
+    const auto incumbent = previewTurns(selected, yaw, turn_lookahead_, turn_threshold_, turn_kp_,
+                                        turn_rate_, unobstructed);
+    constexpr double turn_budget = 0.20 + 1e-8;
+    const bool incumbent_tracks = incumbent.clear && incumbent.longest_turn <= turn_budget;
+    if (incumbent_tracks && short_horizon > 0.0)
+      return true;
+
+    const double origin = referenceProgress(odom_pos_, 0.0, reference_distance_.back());
+    const double upper = std::min(reference_distance_.back(), origin + planning_horizon_ + 1.0);
+    const double lower = std::max(0.0, origin - 1.0);
+    const auto progress = [&](const Eigen::Vector3d &p) { return referenceProgress(p, lower, upper); };
+    const auto lateral_displacement = [&](const Eigen::Vector3d &p) -> Eigen::Vector2d {
+      const double s = progress(p);
+      const Eigen::Vector2d difference = (p - referencePosition(s)).head<2>();
+      const Eigen::Vector2d tangent = (referencePosition(s + 0.15) - referencePosition(s - 0.15)).head<2>();
+      if (tangent.squaredNorm() <= 1e-12)
+        return difference;
+      const Eigen::Vector2d normal = Eigen::Vector2d(-tangent.y(), tangent.x()).normalized();
+      return normal.dot(difference) * normal;
+    };
+    const auto peak_lateral_error = [&](UniformBspline &curve) {
+      const Eigen::Vector3d start = curve.evaluateDeBoorT(0.0);
+      const double duration = std::min(4.0, curve.getTimeSum());
+      const int samples = std::max(1, static_cast<int>(std::ceil(duration / 0.10)));
+      double peak = lateral_displacement(start).norm();
+      for (int i = 1; i <= samples; ++i)
+      {
+        const Eigen::Vector3d p = curve.evaluateDeBoorT(duration * i / samples);
+        peak = std::max(peak, lateral_displacement(p).norm());
+        // Include the section after a failed normal handoff as drift can grow there.
+        if ((p - start).norm() >= 2.0 * replan_thresh_)
+          break;
+      }
+      return peak;
+    };
+    constexpr double max_centering_error = 0.12; // metres from the guide
+    constexpr double min_centering_gain = 0.05;
+    const double old_advance = progress(selected.evaluateDeBoorT(incumbent.phase)) - origin;
+    if (incumbent_tracks)
+    {
+      const double old_lateral = peak_lateral_error(selected);
+      const Eigen::Vector3d start = selected.evaluateDeBoorT(0.0);
+      if (old_lateral < max_centering_error ||
+          old_lateral < lateral_displacement(start).norm() + min_centering_gain)
+        return true;
+
+      constexpr int degree = 3;
+      const Eigen::MatrixXd control_points = selected.getControlPoint();
+      const Eigen::VectorXd knots = selected.getKnot();
+      Eigen::MatrixXd shifts = Eigen::MatrixXd::Zero(control_points.rows(), control_points.cols());
+      // Leave the three boundary controls on either end fixed, preserving
+      // endpoint position, velocity and acceleration at the original knot times.
+      for (Eigen::Index i = degree; i + degree < control_points.cols(); ++i)
+      {
+        const double time = knots.segment(i + 1, degree).mean() - knots(degree);
+        const Eigen::Vector3d p = selected.evaluateDeBoorT(time);
+        const double time_weight = std::clamp((4.6 - time) / 0.6, 0.0, 1.0);
+        const double distance_weight = std::clamp((2.0 * replan_thresh_ + 0.30 - (p - start).norm()) / 0.30, 0.0, 1.0);
+        const Eigen::Vector2d displacement = lateral_displacement(p);
+        const double correction = std::min(0.8, 0.15 / std::max(1e-6, displacement.norm()));
+        shifts.col(i).head<2>() = -time_weight * distance_weight * correction * displacement;
+      }
+      for (double weight : {1.0, 0.5})
+      {
+        UniformBspline alternate(control_points + weight * shifts, degree, selected.getInterval());
+        alternate.setKnot(knots);
+        const double new_lateral = peak_lateral_error(alternate);
+        if (new_lateral > old_lateral - min_centering_gain)
+          continue;
+
+        const auto preview = previewTurns(alternate, yaw, turn_lookahead_, turn_threshold_, turn_kp_,
+                                          turn_rate_, unobstructed);
+        const double advance = progress(alternate.evaluateDeBoorT(preview.phase)) - origin;
+        constexpr double advance_tolerance = 0.03;
+        if (!preview.clear || preview.longest_turn > turn_budget ||
+            advance < std::max(0.05, old_advance - advance_tolerance))
+          continue;
+        bool stair = false;
+        if (!shortTrajectoryClear(alternate, true) || !handoffClear(alternate) ||
+            !followsStairProgress(alternate, stair) || !planner_manager_->checkDynamicFeasibility(alternate))
+          continue;
+
+        selected = alternate;
+        ROS_INFO("Stair centering: original peak=%.3f m, selected peak=%.3f m, selected=forward",
+                 old_lateral, new_lateral);
+        return true;
+      }
+      ROS_INFO("Stair centering: original peak=%.3f m, selected peak=%.3f m, selected=original",
+               old_lateral, old_lateral);
+      return true;
+    }
+
+    const auto old_target = local_target_pt_;
+    const auto old_velocity = local_target_vel_;
+    auto &global_progress = planner_manager_->global_data_.last_progress_time_;
+    const double old_progress = global_progress;
+    bool replaced = false;
+    bool stair = false;
+    // Shorten the guide progressively when a stair edge cuts the FREE band.
+    // A short recovery request already owns its endpoint and lateral offset.
+    const std::array<double, 3> horizons = {short_horizon, 1.2, 0.9};
+    const size_t count = short_horizon > 0.0 ? 1 : horizons.size();
+    for (size_t attempt = 0; attempt < count; ++attempt)
+    {
+      const double horizon = horizons[attempt];
+      if (attempt > 0)
+        getLocalTarget(horizon);
+      UniformBspline alternate;
+      if (!solveLocalCandidate(alternate, true, false, true, horizon > 0.0, false, stair))
+        continue;
+      const auto clear = [&](const Eigen::Vector3d &p, double heading) {
+        return planner_manager_->grid_map_->getInflateOccupancy(p, heading) == 0 &&
+               bodyInsideFree(p, heading, referencePosition(progress(p)).z() - body_height_);
+      };
+      // The spline may start at the old execution sample instead of odometry.
+      const Eigen::Vector3d gap = alternate.evaluateDeBoorT(0.0) - odom_pos_;
+      const int steps = std::max(1, static_cast<int>(std::ceil(gap.norm() / 0.025)));
+      bool connected = true;
+      for (int i = 0; connected && i <= steps; ++i)
+        connected = clear(odom_pos_ + gap * (static_cast<double>(i) / steps), yaw);
+      if (!connected)
+        continue;
+      const auto preview = previewTurns(alternate, yaw, turn_lookahead_, turn_threshold_, turn_kp_,
+                                        turn_rate_, clear);
+      const double advance = progress(alternate.evaluateDeBoorT(preview.phase)) - origin;
+      const double minimum_advance = incumbent.clear ? std::max(0.05, old_advance) : 0.05;
+      if (!preview.clear || preview.longest_turn > turn_budget || advance < minimum_advance)
+        continue;
+      selected = alternate;
+      replaced = true;
+      short_horizon = horizon;
+      break;
+    }
+    if (!replaced)
+    {
+      local_target_pt_ = old_target;
+      local_target_vel_ = old_velocity;
+      global_progress = old_progress;
+    }
+    ROS_INFO("Stair handoff preview: clear=%d turn=%.2f s selected=%s horizon=%.2f", incumbent.clear,
+             incumbent.longest_turn, replaced ? "forward" : (incumbent.clear ? "original" : "none"), short_horizon);
+    return replaced || incumbent.clear;
+  }
+
+
+  double SCANReplanFSM::raisedReplanStartHeight() const
+  {
+    if (navi_mode_ != NAVI_MODE::REFERENCE_PATH || reference_route_.size() < 2)
+      return start_pt_.z();
+
+    // Compare XY at the measured body, within its current vertical neighborhood.
+    // A 3D nearest point would slide backward down the flight when the body crouches.
+    double nearest_xy = 0.30 * 0.30;
+    double reference_z = start_pt_.z();
+    for (size_t i = 1; i < reference_route_.size(); ++i)
+    {
+      const Eigen::Vector3d from = reference_route_[i - 1];
+      const Eigen::Vector3d step = reference_route_[i] - from;
+      const double length_xy = step.head<2>().squaredNorm();
+      if (length_xy < 1e-8)
+        continue;
+      const double fraction = std::clamp(
+          (odom_pos_ - from).head<2>().dot(step.head<2>()) / length_xy, 0.0, 1.0);
+      const Eigen::Vector3d projected = from + fraction * step;
+      if (std::abs(projected.z() - odom_pos_.z()) > 0.75)
+        continue;
+      const double error = (projected - odom_pos_).head<2>().squaredNorm();
+      if (error < nearest_xy)
+      {
+        nearest_xy = error;
+        reference_z = projected.z();
+      }
+    }
+    // Bound against measured Z so successive retries cannot accumulate height.
+    return std::max(start_pt_.z(), std::min(reference_z, odom_pos_.z() + 0.20));
+  }
+
   bool SCANReplanFSM::followsElevatorIngress(UniformBspline &candidate)
   {
     if (ingress_direction_.isZero()) return true;
@@ -1272,9 +1842,15 @@ namespace scan_upstream_planner
   }
 
   bool SCANReplanFSM::callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj,
-                                     double short_horizon, double lateral_offset)
+                                     double short_horizon, double lateral_offset, bool use_reference_target)
   {
-    getLocalTarget(short_horizon);
+    if (use_reference_target)
+    {
+      if (!getShortReferenceTarget(short_horizon))
+        return false;
+    }
+    else
+      getLocalTarget(short_horizon);
     if (lateral_offset != 0.0)
     {
       const double yaw = estimateYawFromSegment(start_pt_, local_target_pt_);
@@ -1287,37 +1863,65 @@ namespace scan_upstream_planner
     if (short_horizon > 0.0 && (local_target_pt_ - start_pt_).head<2>().norm() < 0.20)
       return false;
 
-    const bool plan_success = planner_manager_->reboundReplan(
-        start_pt_, start_vel_, start_acc_, local_target_pt_, local_target_vel_,
-        have_new_target_ || flag_use_poly_init, flag_randomPolyTraj,
-        [this](std::vector<Eigen::Vector3d> &seed) { shapeReferenceHeight(seed); },
-        [this, short_horizon, lateral_offset](UniformBspline &candidate) {
-          if (!followsElevatorIngress(candidate))
-          {
-            ROS_WARN_THROTTLE(1.0, "Rejecting local trajectory that turns away from the elevator during ingress.");
-            return false;
-          }
-          if (!followsStairProgress(candidate))
-          {
-            ROS_WARN_THROTTLE(1.0, "Rejecting local trajectory that doubles back on a stair segment.");
-            return false;
-          }
-          return short_horizon <= 0.0 || shortTrajectoryClear(candidate, lateral_offset != 0.0);
-        });
+    bool stair = false;
+    UniformBspline selected;
+    bool plan_success = solveLocalCandidate(selected, have_new_target_ || flag_use_poly_init,
+                                            flag_randomPolyTraj, use_reference_target, short_horizon > 0.0,
+                                            lateral_offset != 0.0, stair);
+    if (!plan_success && !use_reference_target && navi_mode_ == NAVI_MODE::REFERENCE_PATH && reference_distance_.size() >= 2 &&
+        std::abs(local_target_pt_.z() - start_pt_.z()) >= 0.20)
+      plan_success = solveLocalCandidate(selected, true, false, true, short_horizon > 0.0,
+                                         lateral_offset != 0.0, stair);
+    if (plan_success && stair && !selectStairCandidate(selected, short_horizon))
+      plan_success = false;
+    if (!plan_success)
+    {
+      const double original_z = start_pt_.z();
+      const double target_z = raisedReplanStartHeight();
+      const double original_horizon = short_horizon;
+      for (double raise = 0.05; original_z + raise <= target_z + 0.049; raise += 0.05)
+      {
+        start_pt_.z() = std::min(original_z + raise, target_z);
+        short_horizon = original_horizon;
+        if (start_pt_.z() <= original_z + 0.025 ||
+            planner_manager_->grid_map_->getInflateOccupancy(start_pt_, getOdomYaw()) != 0)
+          continue;
+        plan_success = solveLocalCandidate(selected, true, false, true, short_horizon > 0.0,
+                                            lateral_offset != 0.0, stair);
+        if (plan_success && stair && !selectStairCandidate(selected, short_horizon))
+          plan_success = false;
+        if (plan_success)
+        {
+          ROS_INFO("Raised replan start: body_z=%.3f original_z=%.3f selected_z=%.3f; measured connector checked",
+                   odom_pos_.z(), original_z, start_pt_.z());
+          break;
+        }
+      }
+      if (!plan_success)
+      {
+        start_pt_.z() = original_z;
+        short_horizon = original_horizon;
+      }
+    }
     have_new_target_ = false;
-
-    cout << "final_plan_success=" << plan_success << endl;
-
     if (plan_success)
     {
-
+      planner_manager_->commitCandidate(selected);
       auto info = &planner_manager_->local_data_;
 
+      if (holding_emergency_stop_)
+        ROS_INFO("Resuming with a checked local trajectory: distance=%.2f lateral=%.2f.",
+                 short_horizon, lateral_offset);
       holding_emergency_stop_ = false;
-      short_segment_active_ = short_horizon > 0.0;
-      if (short_segment_active_)
-        ROS_INFO_THROTTLE(1.0, "Continuing with a checked short forward segment: horizon=%.2f lateral=%.2f.",
-                          short_horizon, lateral_offset);
+      stopped_conflict_.reset();
+      last_failed_full_replan_ = ros::Time();
+      short_replan_time_.reset();
+      if (short_horizon > 0.0)
+      {
+        short_replan_time_ = stair ? shortReplanTime(info->position_traj_) : 0.5 * info->duration_;
+        ROS_INFO("Short trajectory %d: horizon=%.2f lateral=%.2f, request successor at %.3f of %.3f s",
+                 info->traj_id_, short_horizon, lateral_offset, *short_replan_time_, info->duration_);
+      }
       /* publish traj */
       scan_upstream_planner::Bspline bspline;
       bspline.order = 3;
@@ -1354,7 +1958,7 @@ namespace scan_upstream_planner
   {
 
     holding_emergency_stop_ = true;
-    short_segment_active_ = false;
+    short_replan_time_.reset();
     planner_manager_->EmergencyStop(stop_pos);
 
     auto info = &planner_manager_->local_data_;
@@ -1388,6 +1992,32 @@ namespace scan_upstream_planner
     return true;
   }
 
+  bool SCANReplanFSM::getShortReferenceTarget(double horizon)
+  {
+    if (navi_mode_ != NAVI_MODE::REFERENCE_PATH || reference_distance_.size() < 2)
+      return false;
+    // A polynomial fitted across a tight landing can cut its corner.
+    // Seed short recovery on the connected, same-height FREE reference.
+    const double total = reference_distance_.back();
+    const double origin = referenceProgress(start_pt_, 0.0, total);
+    const auto &map = planner_manager_->grid_map_;
+    for (double distance = std::min(horizon, total - origin); distance >= 0.20; distance -= 0.08)
+    {
+      const double progress = origin + distance;
+      const Eigen::Vector3d point = referencePosition(progress);
+      const double yaw = estimateYawFromSegment(referencePosition(progress - 0.12),
+                                                referencePosition(progress + 0.12));
+      if ((point - start_pt_).head<2>().norm() < 0.20 ||
+          map->getInflateOccupancy(point, yaw) != 0 ||
+          !bodyInsideFree(point, yaw, point.z() - body_height_))
+        continue;
+      local_target_pt_ = point;
+      local_target_vel_.setZero();
+      return true;
+    }
+    return false;
+  }
+
   void SCANReplanFSM::getLocalTarget(double short_horizon)
   {
     const double max_vel = planner_manager_->pp_.max_vel_;
@@ -1413,13 +2043,12 @@ namespace scan_upstream_planner
     double target_t = duration;
     double total_dist = 0.0;
     bool target_found = false;
-    const Eigen::Vector3d projected_start = planner_manager_->global_data_.getPosition(t_proj);
-    Eigen::Vector3d prev_pos = projected_start;
+    Eigen::Vector3d prev_pos = planner_manager_->global_data_.getPosition(t_proj);
     local_target_pt_ = end_pt_;
 
     for (double t = t_proj; t < duration; t += t_step)
     {
-      const Eigen::Vector3d pos_t = planner_manager_->global_data_.getPosition(t);
+      Eigen::Vector3d pos_t = planner_manager_->global_data_.getPosition(t);
       total_dist += (pos_t - prev_pos).norm();
       if (total_dist >= horizon)
       {

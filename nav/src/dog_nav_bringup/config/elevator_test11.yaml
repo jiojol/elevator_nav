@@ -14,4 +14,5 @@ elevator:
     floor2:
       lobby_pose: [6.700, -5.478, 6.85, -3.039]
       door_center_xy: [5.1415, -5.478]
-      inside_pose: [4.533, -5.478, 6.85, 0.0]
+      inside_pose: [4.690, -5.478, 6.85, 0.0]
+      ingress_brake_distance: 0.85

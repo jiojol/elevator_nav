@@ -36,8 +36,14 @@ verified_pose_max_inlier_rmse: 0.20
 initial_max_translation: 2.0
 initial_max_rotation_deg: 45.0
 tracking_max_translation: 0.35
+# Bounded recovery away from the cabin after loss or a high-confidence mismatch.
+map_recovery_max_translation: 2.0
+map_recovery_max_rotation_deg: 15.0
+map_recovery_max_vertical: 1.50
 # Only used while stopped for post-elevator map reacquisition.
 elevator_reacquire_max_translation: 3.0
+# One nearly pure vertical correction from Elevator-LIO's stop update.
+elevator_max_height_update: 2.5
 tracking_max_rotation_deg: 6.0
 max_gravity_tilt_deg: 12.0
 initial_min_inlier_fraction: 0.65
@@ -50,6 +56,7 @@ correction_linear_rate: 0.05
 correction_angular_rate_deg: 2.0
 global_match_timeout: 5.0
 input_timeout: 0.50
+chassis_prediction_timeout: 0.80
 max_local_speed: 3.0
 max_local_angular_speed: 3.0
 

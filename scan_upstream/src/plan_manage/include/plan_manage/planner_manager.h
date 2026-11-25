@@ -29,9 +29,13 @@ namespace scan_upstream_planner
 
     /* main planning interface */
     bool reboundReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel, Eigen::Vector3d start_acc,
-                       Eigen::Vector3d end_pt, Eigen::Vector3d end_vel, bool flag_polyInit, bool flag_randomPolyTraj,
+                       Eigen::Vector3d end_pt, Eigen::Vector3d end_vel, bool flag_polyInit, bool flag_randomPolyTraj, UniformBspline &result,
+                       double replan_distance, double prefix_cruise_speed,
                        const std::function<void(std::vector<Eigen::Vector3d> &)> &shape_seed,
-                       const std::function<bool(UniformBspline &)> &accept_candidate);
+                       const std::function<bool(UniformBspline &)> &accept_candidate,
+                       const std::function<bool(UniformBspline &)> &accept_retimed);
+    void commitCandidate(const UniformBspline &candidate);
+    bool checkDynamicFeasibility(UniformBspline position_traj);
     bool EmergencyStop(Eigen::Vector3d stop_pos);
     bool planGlobalTraj(const Eigen::Vector3d &start_pos, const Eigen::Vector3d &start_vel, const Eigen::Vector3d &start_acc,
                         const Eigen::Vector3d &end_pos, const Eigen::Vector3d &end_vel, const Eigen::Vector3d &end_acc);
@@ -54,8 +58,7 @@ namespace scan_upstream_planner
     int continuous_failures_count_{0};
 
     void updateTrajInfo(const UniformBspline &position_traj, const ros::Time time_now);
-    bool checkDynamicFeasibility(UniformBspline position_traj);
-    bool retimeForCruise(UniformBspline &position_traj);
+    bool retimeCruisePrefix(UniformBspline &curve, double distance, double horizontal_target) const;
 
     void reparamBspline(UniformBspline &bspline, vector<Eigen::Vector3d> &start_end_derivative, double ratio, Eigen::MatrixXd &ctrl_pts, double &dt,
                         double &time_inc);

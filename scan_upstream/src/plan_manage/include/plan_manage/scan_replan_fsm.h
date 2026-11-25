@@ -4,7 +4,9 @@
 #include <Eigen/Eigen>
 #include <algorithm>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/TwistStamped.h>
 #include <iostream>
+#include <optional>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
 #include <sensor_msgs/Imu.h>
@@ -15,6 +17,8 @@
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <std_msgs/Empty.h>
+#include <std_msgs/Time.h>
+#include <std_msgs/Header.h>
 #include <vector>
 #include <visualization_msgs/Marker.h>
 
@@ -82,7 +86,14 @@ namespace scan_upstream_planner
     ros::Time controller_progress_at_;
     int controller_traj_id_{-1};
     double controller_traj_time_{0.0};
-    ros::Subscriber controller_progress_sub_;
+    ros::Subscriber controller_progress_sub_, rl_handoff_sub_;
+    ros::Time odom_stamp_, rl_handoff_stamp_;
+    nav_msgs::PathConstPtr pending_reference_path_;
+    bool reference_inputs_paused_{false};
+    std::optional<double> reference_alignment_epoch_;
+    bool freshReferenceInputs() const;
+    bool rl_waiting_for_odom_{false};
+    void rlHandoffCallback(const std_msgs::TimeConstPtr &msg);
     void executionProgressCallback(const std_msgs::Float64MultiArrayConstPtr &msg);
 
     Eigen::Vector3d odom_pos_, odom_vel_, odom_acc_; // odometry state
@@ -96,7 +107,18 @@ namespace scan_upstream_planner
 
     bool flag_escape_emergency_;
     bool holding_emergency_stop_{false};
-    bool short_segment_active_{false};
+    std::optional<double> short_replan_time_;
+    std::optional<Eigen::Vector3d> stopped_conflict_;
+    ros::Time collision_stop_at_;
+    std_msgs::Header reference_path_header_;
+    bool reference_goal_active_{false};
+    bool marked_route_{false};
+    Eigen::Vector3d marked_goal_;
+    double marked_goal_yaw_{0.0};
+    ros::Publisher marked_turn_pub_;
+    void publishMarkedTurn();
+    double prefix_cruise_speed_{0.0};
+    static double shortReplanTime(UniformBspline &curve);
     ros::Time last_failed_full_replan_;
     std::vector<Eigen::Vector3d> reference_route_;
     std::vector<double> reference_distance_;
@@ -109,7 +131,12 @@ namespace scan_upstream_planner
     void freeMapCallback(const sensor_msgs::PointCloud2ConstPtr &msg);
 
     double referenceProgress(const Eigen::Vector3d &position, double lower, double upper) const;
-    bool followsStairProgress(UniformBspline &candidate) const;
+    bool followsStairProgress(UniformBspline &candidate, bool &stair) const;
+    bool solveLocalCandidate(UniformBspline &out, bool use_poly, bool randomize, bool forward_seed,
+                             bool short_segment, bool lateral, bool &stair);
+    bool selectStairCandidate(UniformBspline &selected, double &short_horizon);
+    void shapeForwardSeed(std::vector<Eigen::Vector3d> &seed) const;
+    double turn_lookahead_, turn_threshold_, turn_kp_, turn_rate_;
     bool followsElevatorIngress(UniformBspline &candidate);
     std::vector<Eigen::Vector3d> elevator_cabins_;
     Eigen::Vector2d ingress_direction_ = Eigen::Vector2d::Zero();
@@ -120,13 +147,17 @@ namespace scan_upstream_planner
     ros::NodeHandle node_;
     ros::Timer exec_timer_, safety_timer_;
     ros::Subscriber goal_sub_, odom_sub_, path_sub_, go2_execution_frozen_sub_, free_map_sub_;
+    ros::Subscriber goal_reached_sub_;
     ros::Publisher replan_pub_, new_pub_, bspline_pub_, data_disp_pub_, self_inflation_pub_;
 
     /* helper functions */
-    bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj, double short_horizon = 0.0, double lateral_offset = 0.0);
+    bool callReboundReplan(bool flag_use_poly_init, bool flag_randomPolyTraj,
+                          double short_horizon = 0.0, double lateral_offset = 0.0,
+                          bool use_reference_target = false);
     bool callEmergencyStop(Eigen::Vector3d stop_pos);                          // front-end and back-end method
     bool planFromCurrentTraj();
     void setStartStateFromOdomOrCurrentTraj();
+    double raisedReplanStartHeight() const;
 
     /* return value: std::pair< Times of the same state be continuously called, current continuously called state > */
     void changeFSMExecState(FSM_EXEC_STATE new_state, string pos_call);
@@ -139,7 +170,9 @@ namespace scan_upstream_planner
     bool isWaypointSequenceMode() const;
     bool adjustGlobalTargetIfOccupied();
     void getLocalTarget(double short_horizon);
+    bool getShortReferenceTarget(double horizon);
     bool tryShortForwardPlan();
+    bool handoffClear(UniformBspline &candidate, bool entire_curve = false) const;
     bool shortTrajectoryClear(UniformBspline &candidate, bool check_free_band) const;
     void finishProcess();
     void publishSelfInflationMarker();
@@ -153,6 +186,7 @@ namespace scan_upstream_planner
     void rvizGoalCallback(const geometry_msgs::PoseStampedConstPtr &msg);
     void waypointCallback(const nav_msgs::PathConstPtr &msg);
     void pathCallback(const nav_msgs::PathConstPtr &msg);
+    void goalReachedCallback(const std_msgs::HeaderConstPtr &msg);
     void odometryCallback(const nav_msgs::OdometryConstPtr &msg);
     void go2ExecutionFrozenCallback(const std_msgs::BoolConstPtr &msg);
 

@@ -255,9 +255,11 @@ int Pose3DTool::processMouseEvent(rviz::ViewportMouseEvent& event)
     {
       yaw_ = yaw;
     }
-    onPoseSet(pos_.x, pos_.y, pos_.z, yaw_);
+    if (onPoseSet(pos_.x, pos_.y, pos_.z, yaw_, event))
+    {
+      flags |= Finished;
+    }
     reset();
-    flags |= Finished;
   }
 
   return flags;

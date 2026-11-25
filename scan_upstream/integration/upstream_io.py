@@ -18,15 +18,23 @@ from scan_upstream_planner.msg import Bspline
 from execution_policy import (
     ExecutionPolicy, cabin_turn_clear, hit_point_bytes, limit_elevator_exit, limit_near_cabin, world_velocity,
 )
+from stair_surface import StairSurface
 
 class Adapter:
     def __init__(self):
         self.lock = threading.RLock()
+        self.stopping = False
         self.policy = ExecutionPolicy()
+        try:
+            self.stair_surface = StairSurface.from_meta(rospy.get_param('~plan_meta', ''))
+        except (OSError, ValueError, KeyError, SystemExit) as error:
+            rospy.logwarn('Stair surface unavailable; using all obstacle hits: %s', error)
+            self.stair_surface = None
         self.goal = self.pose = self.route_header = None
         self.short_route = False
         self.lobby_goal = None
         self.ingress_goal = False
+        self.ingress_brake = None
         self.mission_state = ""
         self.exit_refresh_origin = None
         self.exit_stopped_at = None
@@ -65,6 +73,7 @@ class Adapter:
         self.cabins = []
         self.lobbies = []
         self.lobby_planes = {}
+        self.ingress_brakes = {}
         self.lobby_arrival_tolerance = float(rospy.get_param('~lobby_arrival_tolerance', .45))
         if not self.xy_tolerance <= self.lobby_arrival_tolerance <= .60:
             raise ValueError("lobby_arrival_tolerance must be between goal_xy_tolerance and 0.60 m")
@@ -93,7 +102,13 @@ class Adapter:
                         half_door = .5 * float(stop.get('door_width', elevator.get('door_width', 1.)))
                         if not math.isfinite(half_door) or half_door <= 0.:
                             raise ValueError("invalid elevator door width")
-                        self.exit_stops[floor] = (x, y, z, yaw, cx, cy, nx, ny, half_door)
+                        geometry = (x, y, z, yaw, cx, cy, nx, ny, half_door)
+                        self.exit_stops[floor] = geometry
+                        if 'ingress_brake_distance' in stop:
+                            distance = float(stop['ingress_brake_distance'])
+                            if not math.isfinite(distance) or distance <= 0. or norm <= self.cabin_sweep_radius:
+                                raise ValueError("invalid elevator ingress braking distance or parking depth")
+                            self.ingress_brakes[x, y, z] = (geometry, distance)
         self.pub = rospy.Publisher('/cmd_vel', Twist, queue_size=1)
         self.cloud_pub = rospy.Publisher('/scan_upstream/cloud', PointCloud2, queue_size=1)
         self.body_pub = rospy.Publisher('/scan_upstream/body_odometry', Odometry, queue_size=5)
@@ -114,10 +129,27 @@ class Adapter:
         for topic in ('/map_manager/cancel', '/plan_map/cancel_scan'):
             rospy.Subscriber(topic, Empty, self.cancel, queue_size=1)
         self.timer = rospy.Timer(rospy.Duration(.02), self.tick)
-        rospy.on_shutdown(lambda: self.pub.publish(Twist()))
+        rospy.on_shutdown(self.shutdown)
+
+    @staticmethod
+    def publish(publisher, msg):
+        try:
+            publisher.publish(msg)
+        except rospy.ROSException:
+            if not rospy.core.is_shutdown_requested():
+                raise
+
+    def shutdown(self):
+        with self.lock:
+            self.stopping = True
+            self.timer.shutdown()
+            self.policy.cancel()
+            self.publish(self.pub, Twist())
 
     def route(self, msg):
         with self.lock:
+            if self.stopping:
+                return
             if not msg.poses:
                 self.policy.cancel()
                 self.goal = None
@@ -136,9 +168,10 @@ class Adapter:
                 (lobby for lobby in self.lobbies
                  if math.hypot(p.x - lobby[0], p.y - lobby[1]) <= .02
                  and abs(p.z - lobby[2]) <= .02), None)
-            self.ingress_goal = any(
-                math.hypot(p.x - x, p.y - y) <= .02 and abs(p.z - z) <= .02
-                for x, y, z in self.cabins)
+            cabin = next(((x, y, z) for x, y, z in self.cabins
+                          if math.hypot(p.x - x, p.y - y) <= .02 and abs(p.z - z) <= .02), None)
+            self.ingress_goal = cabin is not None
+            self.ingress_brake = self.ingress_brakes.get(cabin)
             self.short_route = all(
                 math.hypot(p.x - item.pose.position.x, p.y - item.pose.position.y) <= self.xy_tolerance
                 for item in msg.poses)
@@ -174,8 +207,10 @@ class Adapter:
         world.twist.twist.angular.x, world.twist.twist.angular.y, world.twist.twist.angular.z = omega
         # Legacy upstream consumes world-frame derivatives alongside body pose.
         # This private topic never feeds back into the standard localization odom.
-        self.body_pub.publish(world)
         with self.lock:
+            if self.stopping:
+                return
+            self.publish(self.body_pub, world)
             self.pose = (p.x, p.y, p.z, math.hypot(v.x,v.y), self.yaw(q), abs(v.z))
             self.policy.odom_at = time.monotonic()
             self.policy.odom_stamp = msg.header.stamp.to_sec()
@@ -202,11 +237,13 @@ class Adapter:
 
     def on_elevator_mode(self, msg):
         with self.lock:
+            if self.stopping:
+                return
             self.elevator_mode = msg.data
             if msg.data:
                 self.exit_yaw_settled_at = None
                 self.cabin_yaw_check = None
-                self.pub.publish(Twist())
+                self.publish(self.pub, Twist())
 
     def exit_door_status(self, msg):
         try:
@@ -257,20 +294,25 @@ class Adapter:
                 or math.hypot(pose[0] - stop[0], pose[1] - stop[1]) > .45):
             self.exit_yaw_settled_at = None
             return hold, 'cabin_yaw_waiting_inside_pose'
-        if now - self.exit_door_seen.get(self.exit_floor, float('-inf')) > .60:
-            self.exit_yaw_settled_at = None
-            return hold, 'exit_yaw_waiting_open_door'
+        door_fresh = now - self.exit_door_seen.get(self.exit_floor, float('-inf')) <= .60
         heading = math.atan2(math.sin(stop[3] - pose[4]), math.cos(stop[3] - pose[4]))
         if abs(heading) <= .10 and pose[3] < .08:
+            if not door_fresh:
+                self.exit_yaw_settled_at = None
+                return hold, 'exit_yaw_waiting_open_door'
             if self.exit_yaw_settled_at is None:
                 self.exit_yaw_settled_at = now
             elif now - self.exit_yaw_settled_at >= .30:
                 if now - self.aligned_reported_at >= .2:
-                    self.cabin_aligned.publish(Header(stamp=self.alignment_stamp, frame_id='map'))
+                    self.publish(self.cabin_aligned, Header(stamp=self.alignment_stamp, frame_id='map'))
                     self.aligned_reported_at = now
                 return hold, 'cabin_yaw_aligned'
             return hold, 'exit_yaw_settling'
         self.exit_yaw_settled_at = None
+        # A turn wholly inside the cabin only needs a verified clear sweep.
+        # Require fresh open-door evidence if any part of the sweep crosses it.
+        if not door_fresh and -self.exit_door_clearance(pose, stop) < self.cabin_sweep_radius:
+            return hold, 'exit_yaw_waiting_open_door'
         check = self.cabin_yaw_check
         if (pose[3] >= .08 or abs(heading) <= .10 or not self.cabin_sweep_fits_door(pose, stop)
                 or check is None
@@ -303,7 +345,7 @@ class Adapter:
             self.exit_stopped_at = now
         elif now - self.exit_stopped_at >= 1.:
             self.exit_refresh_requested = True
-            self.refresh.publish(self.route_header)
+            self.publish(self.refresh, self.route_header)
 
     def cloud(self, msg):
         if msg.header.frame_id != 'map' or not -.1 <= (rospy.Time.now()-msg.header.stamp).to_sec() <= 1.:
@@ -324,14 +366,32 @@ class Adapter:
             msg = PointCloud2(header=msg.header, height=1, width=len(data)//msg.point_step,
                 fields=msg.fields, is_bigendian=msg.is_bigendian, point_step=msg.point_step,
                 row_step=len(data), data=bytes(data), is_dense=msg.is_dense)
+        # Keep unfiltered hits for the cabin footprint check.
+        scan_cloud = msg
+        if self.stair_surface is not None:
+            fields = {field.name: field.offset for field in msg.fields
+                      if field.datatype == PointField.FLOAT32 and field.count == 1}
+            if all(axis in fields for axis in ('x', 'y', 'z')):
+                try:
+                    data, removed = self.stair_surface.filter_records(
+                        msg.data, msg.height, msg.width, msg.row_step, msg.point_step,
+                        [fields[axis] for axis in ('x', 'y', 'z')], msg.is_bigendian)
+                    if removed:
+                        scan_cloud = PointCloud2(header=msg.header, height=1, width=len(data)//msg.point_step,
+                            fields=msg.fields, is_bigendian=msg.is_bigendian, point_step=msg.point_step,
+                            row_step=len(data), data=data, is_dense=msg.is_dense)
+                except (ValueError, TypeError) as error:
+                    rospy.logwarn_throttle(2., 'Stair classification unavailable for this cloud: %s', error)
         with self.lock:
+            if self.stopping:
+                return
             self.policy.cloud_at = time.monotonic()
             goal, pose, route = self.goal, self.pose, self.route_header
             stop = self.exit_stops.get(self.exit_floor)
             check_cabin = (self.align_exit_yaw and not self.elevator_mode
                            and self.mission_state in ('ALIGN_CABIN', 'ALIGN_EXIT') and stop is not None
                            and pose is not None and self.exit_door_clearance(pose, stop) < 0.)
-        self.cloud_pub.publish(msg)
+            self.publish(self.cloud_pub, scan_cloud)
         if check_cabin:
             try:
                 points = point_cloud2.read_points(msg, ('x', 'y', 'z'), skip_nans=True)
@@ -344,16 +404,22 @@ class Adapter:
 
     def cancel(self, _):
         with self.lock:
+            if self.stopping:
+                return
             self.policy.cancel()
             self.goal = None
-            self.pub.publish(Twist())
+            self.publish(self.pub, Twist())
 
     def tick(self, _):
         now = time.monotonic()
-        ros_now = rospy.Time.now().to_sec()
         with self.lock:
+            if self.stopping or rospy.core.is_shutdown_requested():
+                return
+            ros_now = rospy.Time.now().to_sec()
             policy_state = self.policy.reason(now, ros_now)
             command = self.policy.output(now, ros_now)
+            ingress = self.mission_state == 'TRACK_INGRESS' and self.ingress_goal
+            brake = self.ingress_brake if ingress else None
             if self.pose and self.cabins:
                 x, y, z = self.pose[:3]
                 ground = (x, y, z - self.body_height)
@@ -363,8 +429,12 @@ class Adapter:
                         command, ground, self.lobby_planes, self.exit_speed,
                         self.corridor_speed, self.lobby_yaw_limit)
                 if exit_command is None:
-                    ingress = self.mission_state == 'TRACK_INGRESS' and self.ingress_goal
                     speed = self.ingress_speed if ingress else self.cabin_speed
+                    if brake:
+                        stop, brake_distance = brake
+                        remaining = (x - stop[0]) * stop[6] + (y - stop[1]) * stop[7]
+                        progress = max(0., min(1., remaining / brake_distance))
+                        speed = max(min(.15, speed), speed * progress)
                     command = limit_near_cabin(command, ground, self.cabins, speed, self.lobbies)
                 else:
                     command = exit_command
@@ -378,6 +448,8 @@ class Adapter:
                 # A marked lobby is a waiting area. Require a stationary, aligned
                 # pose there before acknowledging the approach segment.
                 tolerance = self.lobby_arrival_tolerance if self.lobby_goal else self.xy_tolerance
+                if brake:
+                    tolerance = min(tolerance, .12)
                 distance = math.hypot(self.pose[0]-self.goal[0], self.pose[1]-self.goal[1])
                 plane = self.lobby_planes.get(self.lobby_goal)
                 clear_of_door = (plane is None or
@@ -386,6 +458,12 @@ class Adapter:
                 at_position = (distance <= tolerance
                                and abs(self.pose[2] - self.goal[2]) <= self.z_tolerance
                                and clear_of_door)
+                if brake:
+                    stop, _ = brake
+                    at_position = (at_position and
+                                   self.exit_door_clearance(self.pose, stop) <= -self.cabin_sweep_radius)
+                    if at_position:
+                        command = (0., 0., 0.)
                 stationary = self.pose[3] < .08
                 if self.lobby_goal:
                     lobby_ready = self.mission_state == 'TRACK_LEG1' and policy_state == 'forwarding_upstream'
@@ -407,17 +485,17 @@ class Adapter:
                 self.settled_at = now if close and self.settled_at is None else self.settled_at if close else None
                 if self.settled_at is not None and now-self.settled_at >= .3:
                     self.policy.cancel()
-                    self.done.publish(self.route_header)
+                    self.publish(self.done, self.route_header)
                     command = (0.,0.,0.)
             else:
                 self.settled_at = None
             self.refresh_after_exit_stall(command, now, ros_now)
             msg = Twist()
             msg.linear.x, msg.linear.y, msg.angular.z = command
-            self.pub.publish(msg)
+            self.publish(self.pub, msg)
             if now-self.last_status_at >= 1.:
                 self.last_status_at = now
-                self.status.publish(String(data=json.dumps({
+                self.publish(self.status, String(data=json.dumps({
                     'state': policy_state,
                     'goal_generation': self.policy.generation,
                     'forwarded_velocity': command,

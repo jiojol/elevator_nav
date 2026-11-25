@@ -7,6 +7,7 @@
 #include <Eigen/Eigen>
 #include <plan_env/grid_map.h>
 #include <queue>
+#include <limits>
 
 constexpr double inf = 1 >> 20;
 struct GridNode;
@@ -39,15 +40,6 @@ struct GridNode
 	GridNodePtr cameFrom{NULL};
 };
 
-class NodeComparator
-{
-public:
-	bool operator()(GridNodePtr node1, GridNodePtr node2)
-	{
-		return node1->fScore > node2->fScore;
-	}
-};
-
 class AStar
 {
 private:
@@ -60,14 +52,15 @@ private:
 	double getEuclHeu(GridNodePtr node1, GridNodePtr node2);
 	inline double getHeu(GridNodePtr node1, GridNodePtr node2);
 
-	bool ConvertToIndexAndAdjustStartEndPoints(const Eigen::Vector3d start_pt, const Eigen::Vector3d end_pt, Eigen::Vector3i &start_idx, Eigen::Vector3i &end_idx);
+	bool findEndpoint(const Eigen::Vector3d &point, const Eigen::Vector3d &outward, double yaw,
+	                  Eigen::Vector3i &index) const;
 
 	inline Eigen::Vector3d Index2Coord(const Eigen::Vector3i &index) const;
 	inline bool Coord2Index(const Eigen::Vector3d &pt, Eigen::Vector3i &idx) const;
 
 	//bool (*checkOccupancyPtr)( const Eigen::Vector3d &pos );
 
-	inline int checkOccupancy(const Eigen::Vector3d &pos, const double yaw) { return grid_map_->getInflateOccupancy(pos, yaw); }
+	inline int checkOccupancy(const Eigen::Vector3d &pos, const double yaw) const { return grid_map_->getInflateOccupancy(pos, yaw); }
 
 	std::vector<GridNodePtr> retrievePath(GridNodePtr current);
 
@@ -79,7 +72,12 @@ private:
 	std::vector<GridNodePtr> gridPath_;
 
 	GridNodePtr ***GridNodeMap_;
-	std::priority_queue<GridNodePtr, std::vector<GridNodePtr>, NodeComparator> openSet_;
+	struct QueueEntry {
+		double cost;
+		GridNodePtr node;
+		bool operator<(const QueueEntry &other) const { return cost > other.cost; }
+	};
+	std::priority_queue<QueueEntry> openSet_;
 
 	int rounds_{0};
 
@@ -91,7 +89,9 @@ public:
 
 	void initGridMap(GridMap::Ptr occ_map, const Eigen::Vector3i pool_size);
 
-	ASTAR_RET AstarSearch(const double step_size, Eigen::Vector3d start_pt, Eigen::Vector3d end_pt);
+	ASTAR_RET AstarSearch(double step_size, Eigen::Vector3d start_pt, Eigen::Vector3d end_pt,
+	                     double start_yaw = std::numeric_limits<double>::quiet_NaN(),
+	                     double end_yaw = std::numeric_limits<double>::quiet_NaN());
 
 	std::vector<Eigen::Vector3d> getPath();
 };
@@ -108,14 +108,12 @@ inline Eigen::Vector3d AStar::Index2Coord(const Eigen::Vector3i &index) const
 
 inline bool AStar::Coord2Index(const Eigen::Vector3d &pt, Eigen::Vector3i &idx) const
 {
-	idx = ((pt - center_) * inv_step_size_ + Eigen::Vector3d(0.5, 0.5, 0.5)).cast<int>() + CENTER_IDX_;
-
-	if (idx(0) < 0 || idx(0) >= POOL_SIZE_(0) || idx(1) < 0 || idx(1) >= POOL_SIZE_(1) || idx(2) < 0 || idx(2) >= POOL_SIZE_(2))
-	{
-		ROS_ERROR("Ran out of pool, index=%d %d %d", idx(0), idx(1), idx(2));
+	const Eigen::Array3d cell = (((pt - center_) * inv_step_size_).array() + 0.5).floor()
+	                          + CENTER_IDX_.cast<double>().array();
+	if (!cell.isFinite().all() || (cell < 1).any() ||
+	    (cell >= POOL_SIZE_.cast<double>().array() - 1).any())
 		return false;
-	}
-
+	idx = cell.cast<int>().matrix();
 	return true;
 };
 

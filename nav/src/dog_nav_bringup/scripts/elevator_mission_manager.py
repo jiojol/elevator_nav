@@ -169,6 +169,7 @@ class ElevatorMissionManager:
         self.legs: List[MissionLeg] = []
         self.leg_index = 0
         self.active_segment_stamp = rospy.Time()
+        self.replacement_cancel_at: Optional[rospy.Time] = None
         self.cabin_alignment_stamp = rospy.Time()
         self.cabin_alignment_started_at = None
         self.latest_odom: Optional[Odometry] = None
@@ -224,6 +225,8 @@ class ElevatorMissionManager:
         rospy.Subscriber("/elevator_nav/cabin_aligned", Header, self.on_cabin_aligned, queue_size=1)
         rospy.Subscriber("/map_manager/result", String,
                          self.on_planner_result, queue_size=10)
+        rospy.Subscriber("/map_manager/status", String,
+                         self.on_planner_status, queue_size=10)
         self.timer = rospy.Timer(rospy.Duration(0.10), self.on_timer)
         self.publish_status()
         rospy.loginfo("Elevator mission manager ready")
@@ -331,6 +334,7 @@ class ElevatorMissionManager:
         rospy.loginfo("Elevator mission %s: %s", state, message)
 
     def fail(self, message: str) -> None:
+        self.replacement_cancel_at = None
         self.transition(FAILED, message)
         self.publish_result("failed", message)
         self.cancel_pub.publish(Empty())
@@ -360,7 +364,10 @@ class ElevatorMissionManager:
 
     def on_goal(self, msg: PoseStamped) -> None:
         with self.lock:
-            if not self.manual_start and self.state not in (
+            replacing = (not self.manual_start and not self.latest_elevator_mode and
+                         (self.state == TRACK_SINGLE or
+                          (self.state == TRACK_LEG2 and self.clear_of_exit_door())))
+            if not self.manual_start and not replacing and self.state not in (
                     WAIT_GOAL, WAIT_POSE, ARRIVED, FAILED, CANCELED):
                 rospy.logwarn("Elevator mission busy in state %s; goal rejected", self.state)
                 return
@@ -394,11 +401,18 @@ class ElevatorMissionManager:
             self.source_door_seen_at = float("-inf")
             self.transit_started_at = None
             pose_source = "RViz 3D Pose Estimate" if self.manual_start else "fresh tracking odometry"
-            self.transition(WAIT_POSE, "waiting for " + pose_source)
+            if replacing:
+                self.replacement_cancel_at = rospy.Time.now()
+                self.active_segment_stamp = rospy.Time()
+            message = ("replacing the current navigation goal" if self.replacement_cancel_at is not None
+                       else "waiting for " + pose_source)
+            self.transition(WAIT_POSE, message)
+            if replacing:
+                self.cancel_pub.publish(Empty())
             self.try_start_mission()
 
     def try_start_mission(self) -> None:
-        if self.final_goal is None or not self.ready_for_planning():
+        if self.final_goal is None or self.replacement_cancel_at is not None or not self.ready_for_planning():
             return
         try:
             self.start_floor = self.current_floor()
@@ -492,6 +506,24 @@ class ElevatorMissionManager:
                 self.transition(WAIT_ELEVATOR_MODE, "exit-facing pose confirmed; waiting for elevator ride")
             elif self.current_floor() == self.target_floor:
                 self.start_exit_leg()
+
+    def clear_of_exit_door(self) -> bool:
+        if (self.latest_elevator_mode or not self.ready_for_planning()
+                or self.current_floor() != self.target_floor):
+            return False
+        stop = self.elevator["floors"][self.target_floor]
+        door = stop.get("door_center_xy")
+        if door is None:
+            return False
+        cx, cy, z, _ = stop["inside_pose"]
+        if abs(self.ground_z() - z) > self.destination_height_tolerance:
+            return False
+        nx, ny = door[0] - cx, door[1] - cy
+        depth = math.hypot(nx, ny)
+        if depth < .05:
+            return False
+        p = self.latest_odom.pose.pose.position
+        return ((p.x - door[0]) * nx + (p.y - door[1]) * ny) / depth >= .65
 
     def start_exit_leg(self) -> None:
         self.leg_index = 2
@@ -597,7 +629,9 @@ class ElevatorMissionManager:
                 return
             try:
                 result = json.loads(msg.data)
-            except (TypeError, ValueError):
+                if float(result.get("stamp", self.active_segment_stamp.to_sec())) < self.active_segment_stamp.to_sec():
+                    return
+            except (AttributeError, TypeError, ValueError):
                 return
             status = str(result.get("status", "")).lower()
             if self.preview_routes and status == "succeeded":
@@ -607,6 +641,19 @@ class ElevatorMissionManager:
                 self.fail("planner failed: {}".format(result.get("message", "unknown")))
             elif status == "cancelled":
                 self.transition(CANCELED, "planner canceled the active segment")
+
+    def on_planner_status(self, msg: String) -> None:
+        with self.lock:
+            if self.state != WAIT_POSE or self.replacement_cancel_at is None:
+                return
+            try:
+                status = json.loads(msg.data)
+                stamp = float(status.get("stamp", 0.0))
+            except (AttributeError, TypeError, ValueError):
+                return
+            if status.get("state") == "CANCELED" and stamp >= self.replacement_cancel_at.to_sec():
+                self.replacement_cancel_at = None
+                self.try_start_mission()
 
     def on_timer(self, _event=None) -> None:
         with self.lock:
@@ -622,9 +669,13 @@ class ElevatorMissionManager:
                 return
             if self.state == WAIT_DOOR_OUTSIDE:
                 self.try_start_ingress()
-            if (self.state == ALIGN_EXIT and self.cabin_alignment_started_at is not None
-                    and now - self.cabin_alignment_started_at > self.door_plan_timeout_s):
-                self.fail("destination exit timed out while waiting for cabin alignment")
+            if self.state == ALIGN_EXIT:
+                if self.clear_of_exit_door():
+                    rospy.loginfo("Elevator body is clear of the destination door; planning from current pose")
+                    self.start_exit_leg()
+                elif (self.cabin_alignment_started_at is not None and
+                      now - self.cabin_alignment_started_at > self.door_plan_timeout_s):
+                    self.fail("destination exit timed out while waiting for cabin alignment")
                 return
             if (self.state == WAIT_DOOR_OPEN and self.elevator_stopped_at is not None and
                     now - self.elevator_stopped_at >= self.door_settle_s):
@@ -663,6 +714,7 @@ class ElevatorMissionManager:
             self.final_goal = None
             self.legs = []
             self.active_segment_stamp = rospy.Time()
+            self.replacement_cancel_at = None
 
 
 def main() -> int:

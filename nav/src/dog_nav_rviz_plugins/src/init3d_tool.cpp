@@ -54,7 +54,7 @@ void Init3DTool::updateTopic()
   pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>(topic_property_->getStdString(), 1);
 }
 
-void Init3DTool::onPoseSet(double x, double y, double z, double yaw)
+bool Init3DTool::onPoseSet(double x, double y, double z, double yaw, rviz::ViewportMouseEvent&)
 {
   geometry_msgs::PoseWithCovarianceStamped msg;
   msg.header.frame_id = context_->getFixedFrame().toStdString();
@@ -81,6 +81,7 @@ void Init3DTool::onPoseSet(double x, double y, double z, double yaw)
   ROS_INFO("3D Pose Estimate: (%.2f, %.2f, %.2f) yaw=%.2f -> %s",
            x, y, z, yaw, topic_property_->getStdString().c_str());
   pub_.publish(msg);
+  return true;
 }
 
 }  // namespace dog_nav_rviz

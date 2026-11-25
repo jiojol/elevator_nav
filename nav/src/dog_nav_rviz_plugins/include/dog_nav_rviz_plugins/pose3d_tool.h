@@ -26,12 +26,13 @@ public:
   int processKeyEvent(QKeyEvent* event, rviz::RenderPanel* panel) override;
 
 protected:
-  virtual void onPoseSet(double x, double y, double z, double yaw) = 0;
+  virtual bool onPoseSet(double x, double y, double z, double yaw,
+                         rviz::ViewportMouseEvent& event) = 0;
   void setArrowColor(float r, float g, float b);
+  bool pickPosition(rviz::ViewportMouseEvent& event, Ogre::Vector3& pos);
 
 private:
   void reset();
-  bool pickPosition(rviz::ViewportMouseEvent& event, Ogre::Vector3& pos);
   bool yawFromMouse(rviz::ViewportMouseEvent& event, double& yaw) const;
   void applyWheelHeight(rviz::ViewportMouseEvent& event);
   void updateArrows();

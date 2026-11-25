@@ -2,6 +2,7 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include <sensor_msgs/point_cloud2_iterator.h>
 #include <tf/transform_broadcaster.h>
 
 void GridMap::initMap(ros::NodeHandle &nh)
@@ -527,7 +528,8 @@ void GridMap::raycastProcess()
   if (md_.proj_points_cnt == 0)
     return;
 
-  updateSlidingMap(md_.ray_pos_);
+  const Eigen::Vector3d &ray_origin = md_.use_cloud_update_ ? pending_cloud_origin_ : md_.ray_pos_;
+  updateSlidingMap(ray_origin);
 
   ros::Time t1, t2;
 
@@ -557,22 +559,22 @@ void GridMap::raycastProcess()
 
     if (!isInMap(pt_w))
     {
-      pt_w = closetPointInMap(pt_w, md_.ray_pos_);
+      pt_w = closetPointInMap(pt_w, ray_origin);
 
-      length = (pt_w - md_.ray_pos_).norm();
+      length = (pt_w - ray_origin).norm();
       if (length > mp_.max_ray_length_)
       {
-        pt_w = (pt_w - md_.ray_pos_) / length * mp_.max_ray_length_ + md_.ray_pos_;
+        pt_w = (pt_w - ray_origin) / length * mp_.max_ray_length_ + ray_origin;
       }
       vox_idx = setCacheOccupancy(pt_w, 0);
     }
     else
     {
-      length = (pt_w - md_.ray_pos_).norm();
+      length = (pt_w - ray_origin).norm();
 
       if (length > mp_.max_ray_length_)
       {
-        pt_w = (pt_w - md_.ray_pos_) / length * mp_.max_ray_length_ + md_.ray_pos_;
+        pt_w = (pt_w - ray_origin) / length * mp_.max_ray_length_ + ray_origin;
         vox_idx = setCacheOccupancy(pt_w, 0);
       }
       else
@@ -603,12 +605,12 @@ void GridMap::raycastProcess()
       }
     }
 
-    raycaster.setInput(pt_w / mp_.resolution_, md_.ray_pos_ / mp_.resolution_);
+    raycaster.setInput(pt_w / mp_.resolution_, ray_origin / mp_.resolution_);
 
     while (raycaster.step(ray_pt))
     {
       Eigen::Vector3d tmp = (ray_pt + half) * mp_.resolution_;
-      length = (tmp - md_.ray_pos_).norm();
+      length = (tmp - ray_origin).norm();
 
       vox_idx = setCacheOccupancy(tmp, 0);
 
@@ -626,13 +628,13 @@ void GridMap::raycastProcess()
     }
   }
 
-  min_x = min(min_x, md_.ray_pos_(0));
-  min_y = min(min_y, md_.ray_pos_(1));
-  min_z = min(min_z, md_.ray_pos_(2));
+  min_x = min(min_x, ray_origin(0));
+  min_y = min(min_y, ray_origin(1));
+  min_z = min(min_z, ray_origin(2));
 
-  max_x = max(max_x, md_.ray_pos_(0));
-  max_y = max(max_y, md_.ray_pos_(1));
-  max_z = max(max_z, md_.ray_pos_(2));
+  max_x = max(max_x, ray_origin(0));
+  max_y = max(max_y, ray_origin(1));
+  max_z = max(max_z, ray_origin(2));
   max_z = max(max_z, mp_.ground_height_);
 
   posToIndex(Eigen::Vector3d(max_x, max_y, max_z), md_.local_bound_max_);
@@ -641,8 +643,8 @@ void GridMap::raycastProcess()
   boundIndex(md_.local_bound_max_);
 
   // update occupancy cached in queue
-  Eigen::Vector3d local_range_min = md_.ray_pos_ - mp_.local_update_range_;
-  Eigen::Vector3d local_range_max = md_.ray_pos_ + mp_.local_update_range_;
+  Eigen::Vector3d local_range_min = ray_origin - mp_.local_update_range_;
+  Eigen::Vector3d local_range_max = ray_origin + mp_.local_update_range_;
 
   Eigen::Vector3i min_id, max_id;
   posToIndex(local_range_min, min_id);
@@ -733,10 +735,25 @@ void GridMap::updateOccupancyCallback(const ros::TimerEvent & /*event*/)
   // ros::Time t1, t2, t3, t4;
   // t1 = ros::Time::now();
 
+  bool rebuilt_grid = false;
   if (!md_.use_cloud_update_)
     projectDepthImage();
+  else if (pending_alignment_epoch_ && pending_alignment_epoch_ != alignment_epoch_)
+  {
+    if (alignment_epoch_)
+    {
+      resetBuffer();
+      rebuilt_grid = true;
+      ROS_INFO("SCAN occupancy: rebuilding evidence in the confirmed localization frame");
+    }
+    alignment_epoch_ = pending_alignment_epoch_;
+  }
   // t2 = ros::Time::now();
   raycastProcess();
+  // The Go2 hit threshold requires two scans from an empty grid. Advertise
+  // freshness on the next fusion, after obstacle hits can become occupied.
+  if (md_.use_cloud_update_)
+    cloud_stamp_ = rebuilt_grid ? ros::Time() : pending_cloud_stamp_;
   // t3 = ros::Time::now();
 
   // t4 = ros::Time::now();
@@ -851,6 +868,13 @@ void GridMap::slidingMapFrameCallback(const nav_msgs::OdometryConstPtr &pose)
 {
   const geometry_msgs::Point &pos = pose->pose.pose.position;
   md_.sliding_map_frame_pos_ = Eigen::Vector3d(pos.x, pos.y, pos.z);
+  const auto &orientation = pose->pose.pose.orientation;
+  Eigen::Quaterniond body_q(orientation.w, orientation.x, orientation.y, orientation.z);
+  if (body_q.coeffs().allFinite() && body_q.norm() > 1e-6)
+  {
+    md_.body_normal_ = body_q.normalized().toRotationMatrix().col(2);
+    md_.body_pose_stamp_ = pose->header.stamp;
+  }
 }
 
 void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
@@ -873,7 +897,29 @@ void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
     return;
 
   const Eigen::Matrix3d sensor_r = md_.ray_q_.toRotationMatrix();
-  const Eigen::Vector3d ray_pos = md_.ray_pos_;
+  Eigen::Vector3d ray_pos = md_.ray_pos_;
+  std::optional<double> alignment_epoch;
+  const auto epoch_field = std::find_if(img->fields.begin(), img->fields.end(),
+      [](const sensor_msgs::PointField &f) { return f.name == "alignment_epoch"; });
+  if (mp_.cloud_is_world_ && epoch_field != img->fields.end())
+  {
+    // The localizer carries the ray origin and frame generation of this scan.
+    // A pose from another ROS queue may belong to the pre-recovery frame.
+    try
+    {
+      alignment_epoch = *sensor_msgs::PointCloud2ConstIterator<double>(*img, "alignment_epoch");
+      ray_pos.x() = *sensor_msgs::PointCloud2ConstIterator<double>(*img, "vp_x");
+      ray_pos.y() = *sensor_msgs::PointCloud2ConstIterator<double>(*img, "vp_y");
+      ray_pos.z() = *sensor_msgs::PointCloud2ConstIterator<double>(*img, "vp_z");
+    }
+    catch (const std::runtime_error &error)
+    {
+      ROS_WARN_THROTTLE(1., "SCAN occupancy: invalid lidar alignment fields: %s", error.what());
+      return;
+    }
+    if (!std::isfinite(*alignment_epoch))
+      return;
+  }
   if (!std::isfinite(ray_pos.x()) || !std::isfinite(ray_pos.y()) || !std::isfinite(ray_pos.z()))
     return;
 
@@ -916,6 +962,9 @@ void GridMap::cloudCallback(const sensor_msgs::PointCloud2ConstPtr &img)
   if (md_.proj_points_cnt == 0)
     return;
 
+  pending_cloud_origin_ = ray_pos;
+  pending_cloud_stamp_ = img->header.stamp;
+  pending_alignment_epoch_ = alignment_epoch;
   md_.use_cloud_update_ = true;
   md_.occ_need_update_ = true;
 }

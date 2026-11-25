@@ -21,14 +21,16 @@ class Goal3DTool : public Pose3DTool
 public:
   Goal3DTool();
   void onInitialize() override;
+  void activate() override;
 
 protected:
-  void onPoseSet(double x, double y, double z, double yaw) override;
+  bool onPoseSet(double x, double y, double z, double yaw, rviz::ViewportMouseEvent&) override;
 
 private Q_SLOTS:
   void updateTopic();
 
 private:
+  bool publishElevatorMark(double x, double y, double z, rviz::ViewportMouseEvent& event);
   ros::NodeHandle nh_;
   ros::Publisher pub_;
   rviz::StringProperty* topic_property_;

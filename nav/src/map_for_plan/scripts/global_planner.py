@@ -170,6 +170,7 @@ class GlobalPlanner:
         self.goal_started_at = None
         self.active_path_stamp = None
         self.goal_pending_for_pose = False
+        self.waiting_for_map_recovery = False
         self.scan_ack = False
 
         self.cloud_request = None
@@ -422,7 +423,15 @@ class GlobalPlanner:
                 self.current_floor = floor
                 self.current_map_pub.publish(String(data=floor))
             if self.goal_pending_for_pose:
+                if self.waiting_for_map_recovery:
+                    if self.cloud_localization != 'TRACKING' or not self._has_fresh_odom():
+                        return
+                    if floor != self.active_floor:
+                        self._fail_goal('recovered pose is on a different floor from the active segment')
+                        return
                 self._set_start_from_body_pose(self.latest_odom)
+                if not self.goal_pending_for_pose:
+                    self.waiting_for_map_recovery = False
         finally:
             self.lock.release()
 
@@ -553,6 +562,15 @@ class GlobalPlanner:
         with self.lock:
             self.cloud_localization = msg.data
             self.cloud_localization_at = time.monotonic()
+            if (msg.data == 'LOST_MAP_MATCH' and self.mission_segment_only
+                    and not self.planning_only and self.active_goal is not None
+                    and self.active_path_stamp is not None):
+                # Retire the old route before relocalization can move its start.
+                self.path_xyz = None
+                self.scan_ack = False
+                self.goal_pending_for_pose = self.waiting_for_map_recovery = True
+                self._publish_path(rospy.Time.now())
+                self._publish_status('WAITING_FOR_POSE', 'waiting for map recovery', target_map=self.active_floor)
 
     def _cloud_context(self):
         receipt=getattr(self,'odom_receipt',None)
@@ -709,6 +727,7 @@ class GlobalPlanner:
         self.active_goal = None
         self.active_path_stamp = None
         self.goal_pending_for_pose = False
+        self.waiting_for_map_recovery = False
         self.scan_ack = False
         self.path_xyz = None
         self.path_yaws = None
@@ -868,6 +887,7 @@ class GlobalPlanner:
             self.goal_xyz = None
             self.goal_started_at = None
             self.goal_pending_for_pose = False
+            self.waiting_for_map_recovery = False
             self.scan_ack = False
             self.path_xyz = None
             self.path_yaws = None
@@ -882,6 +902,7 @@ class GlobalPlanner:
         self.active_goal = None
         self.goal_started_at = None
         self.goal_pending_for_pose = False
+        self.waiting_for_map_recovery = False
         self.scan_ack = False
         self.path_xyz = None
         self.path_yaws = None

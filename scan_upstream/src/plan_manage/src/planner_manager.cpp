@@ -1,3 +1,4 @@
+#include <plan_manage/trajectory_dynamics.hpp>
 // #include <fstream>
 #include <plan_manage/planner_manager.h>
 #include <algorithm>
@@ -78,9 +79,11 @@ namespace scan_upstream_planner
 
   bool SCANPlannerManager::reboundReplan(Eigen::Vector3d start_pt, Eigen::Vector3d start_vel,
                                         Eigen::Vector3d start_acc, Eigen::Vector3d local_target_pt,
-                                        Eigen::Vector3d local_target_vel, bool flag_polyInit, bool flag_randomPolyTraj,
+                                        Eigen::Vector3d local_target_vel, bool flag_polyInit, bool flag_randomPolyTraj, UniformBspline &result,
+                                        double replan_distance, double prefix_cruise_speed,
                                         const std::function<void(std::vector<Eigen::Vector3d> &)> &shape_seed,
-                                        const std::function<bool(UniformBspline &)> &accept_candidate)
+                                        const std::function<bool(UniformBspline &)> &accept_candidate,
+                                        const std::function<bool(UniformBspline &)> &accept_retimed)
   {
 
     static int count = 0;
@@ -102,8 +105,17 @@ namespace scan_upstream_planner
 
     /*** STEP 1: INIT ***/
     double ts = (start_pt - local_target_pt).norm() > 0.1 ? pp_.ctrl_pt_dist / pp_.max_vel_ * 1.2 : pp_.ctrl_pt_dist / pp_.max_vel_ * 5; // pp_.ctrl_pt_dist / pp_.max_vel_ is too tense, and will surely exceed the acc/vel limits
+    constexpr size_t max_seed_points = 256;
+    constexpr int max_sampling_passes = 12;
+    if (!std::isfinite(ts) || ts <= 0.0)
+      return false;
+
     vector<Eigen::Vector3d> point_set, start_end_derivatives;
-    static bool flag_first_call = true, flag_force_polynomial = false;
+    static bool flag_first_call = true;
+    const double reuse_time = (t_start - local_data_.start_time_).toSec();
+    bool flag_force_polynomial = local_data_.start_time_.isZero() || !std::isfinite(local_data_.duration_) ||
+                                 !std::isfinite(reuse_time) || reuse_time < 0.0 ||
+                                 reuse_time >= local_data_.duration_ - 1e-3;
     bool flag_regenerate = false;
     do
     {
@@ -120,6 +132,8 @@ namespace scan_upstream_planner
 
         double dist = (start_pt - local_target_pt).norm();
         double time = pow(pp_.max_vel_, 2) / pp_.max_acc_ > dist ? sqrt(dist / pp_.max_acc_) : (dist - pow(pp_.max_vel_, 2) / pp_.max_acc_) / pp_.max_vel_ + 2 * pp_.max_vel_ / pp_.max_acc_;
+        if (!std::isfinite(time) || time <= 0.0)
+          return false;
 
         if (!flag_randomPolyTraj)
         {
@@ -141,8 +155,12 @@ namespace scan_upstream_planner
           gl_traj = PolynomialTraj::minSnapTraj(pos, start_vel, local_target_vel, start_acc, Eigen::Vector3d::Zero(), t);
         }
 
+        if (gl_traj.getTimes().empty())
+          return false;
+
         double t;
         bool flag_too_far;
+        int sampling_passes = 0;
         ts *= 1.5; // ts will be divided by 1.5 in the next
         do
         {
@@ -153,6 +171,12 @@ namespace scan_upstream_planner
           for (t = 0; t < time; t += ts)
           {
             Eigen::Vector3d pt = gl_traj.evaluate(t);
+            if (!pt.allFinite() || point_set.size() == max_seed_points)
+            {
+              ROS_WARN_THROTTLE(1.0, "Rejecting invalid or oversized polynomial trajectory seed.");
+              continuous_failures_count_++;
+              return false;
+            }
             if ((last_pt - pt).norm() > pp_.ctrl_pt_dist * 1.5)
             {
               flag_too_far = true;
@@ -161,7 +185,13 @@ namespace scan_upstream_planner
             last_pt = pt;
             point_set.push_back(pt);
           }
-        } while (flag_too_far || point_set.size() < 7); // To make sure the initial path has enough points.
+        } while ((flag_too_far || point_set.size() < 7) && ++sampling_passes < max_sampling_passes);
+        if (flag_too_far || point_set.size() < 7)
+        {
+          ROS_WARN_THROTTLE(1.0, "Polynomial trajectory seed could not be sampled within limits.");
+          continuous_failures_count_++;
+          return false;
+        }
         t -= ts;
         start_end_derivatives.push_back(gl_traj.evaluateVel(0));
         start_end_derivatives.push_back(local_target_vel);
@@ -170,57 +200,56 @@ namespace scan_upstream_planner
       }
       else // Initial path generated from previous trajectory.
       {
-
+        // Failed or degenerate reuse attempts restart once with a polynomial seed.
+        flag_force_polynomial = flag_regenerate = true;
         double t;
-        double t_cur = (ros::Time::now() - local_data_.start_time_).toSec();
 
         vector<double> pseudo_arc_length;
         vector<Eigen::Vector3d> segment_point;
         pseudo_arc_length.push_back(0.0);
-        for (t = t_cur; t < local_data_.duration_ + 1e-3; t += ts)
+        for (t = reuse_time; t < local_data_.duration_ + 1e-3 && segment_point.size() < max_seed_points; t += ts)
         {
           segment_point.push_back(local_data_.position_traj_.evaluateDeBoorT(t));
-          if (t > t_cur)
+          if (segment_point.size() > 1)
           {
             pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
           }
         }
+        if (segment_point.empty() || segment_point.size() == max_seed_points)
+          continue;
         t -= ts;
 
-        double poly_time = (local_data_.position_traj_.evaluateDeBoorT(t) - local_target_pt).norm() / pp_.max_vel_ * 2;
+        const double poly_time = (segment_point.back() - local_target_pt).norm() / pp_.max_vel_ * 2;
+        if (!std::isfinite(poly_time))
+          continue;
         if (poly_time > ts)
         {
-          PolynomialTraj gl_traj = PolynomialTraj::one_segment_traj_gen(local_data_.position_traj_.evaluateDeBoorT(t),
+          PolynomialTraj gl_traj = PolynomialTraj::one_segment_traj_gen(segment_point.back(),
                                                                         local_data_.velocity_traj_.evaluateDeBoorT(t),
                                                                         local_data_.acceleration_traj_.evaluateDeBoorT(t),
                                                                         local_target_pt, local_target_vel, Eigen::Vector3d::Zero(), poly_time);
 
-          for (t = ts; t < poly_time; t += ts)
+          for (t = ts; t < poly_time && segment_point.size() < max_seed_points; t += ts)
           {
-            if (!pseudo_arc_length.empty())
-            {
-              segment_point.push_back(gl_traj.evaluate(t));
-              pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
-            }
-            else
-            {
-              ROS_ERROR("pseudo_arc_length is empty, return!");
-              continuous_failures_count_++;
-              return false;
-            }
+            segment_point.push_back(gl_traj.evaluate(t));
+            pseudo_arc_length.push_back((segment_point.back() - segment_point[segment_point.size() - 2]).norm() + pseudo_arc_length.back());
           }
         }
 
-        double sample_length = 0;
+        if (segment_point.size() < 2 || segment_point.size() == max_seed_points ||
+            !std::isfinite(pseudo_arc_length.back()) || pseudo_arc_length.back() <= 1e-6)
+          continue;
+
         double cps_dist = pp_.ctrl_pt_dist * 1.5; // cps_dist will be divided by 1.5 in the next
-        size_t id = 0;
+        int sampling_passes = 0;
         do
         {
           cps_dist /= 1.5;
           point_set.clear();
-          sample_length = 0;
-          id = 0;
-          while ((id <= pseudo_arc_length.size() - 2) && sample_length <= pseudo_arc_length.back())
+          double sample_length = 0.0;
+          size_t id = 0;
+          while (id + 1 < pseudo_arc_length.size() && sample_length <= pseudo_arc_length.back() &&
+                 point_set.size() < max_seed_points)
           {
             if (sample_length >= pseudo_arc_length[id] && sample_length < pseudo_arc_length[id + 1])
             {
@@ -231,19 +260,20 @@ namespace scan_upstream_planner
             else
               id++;
           }
+          if (point_set.size() == max_seed_points)
+            break;
           point_set.push_back(local_target_pt);
-        } while (point_set.size() < 7); // If the start point is very close to end point, this will help
+        } while (point_set.size() < 7 && ++sampling_passes < max_sampling_passes);
 
-        start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(t_cur));
+        if (point_set.size() < 7 || point_set.size() > pp_.planning_horizon_ / pp_.ctrl_pt_dist * 3 ||
+            point_set.size() == max_seed_points)
+          continue;
+
+        start_end_derivatives.push_back(local_data_.velocity_traj_.evaluateDeBoorT(reuse_time));
         start_end_derivatives.push_back(local_target_vel);
-        start_end_derivatives.push_back(local_data_.acceleration_traj_.evaluateDeBoorT(t_cur));
+        start_end_derivatives.push_back(local_data_.acceleration_traj_.evaluateDeBoorT(reuse_time));
         start_end_derivatives.push_back(Eigen::Vector3d::Zero());
-
-        if (point_set.size() > pp_.planning_horizon_ / pp_.ctrl_pt_dist * 3) // The initial path is abnormally too long!
-        {
-          flag_force_polynomial = true;
-          flag_regenerate = true;
-        }
+        flag_regenerate = false;
       }
     } while (flag_regenerate);
 
@@ -280,48 +310,72 @@ namespace scan_upstream_planner
 
     /*** STEP 3: REFINE(RE-ALLOCATE TIME) IF NECESSARY ***/
     UniformBspline pos = UniformBspline(ctrl_pts, 3, ts);
-    pos.setPhysicalLimits(pp_.max_vel_, pp_.max_acc_, pp_.feasibility_tolerance_);
-
-    double ratio;
+    // Geometry optimization keeps its nominal acceleration cost. Time
+    // allocation and acceptance share the actual command/dynamic limits.
+    // Otherwise a feasible 2.0 m/s^2 curve gets stretched as if 0.6 were
+    // still the final limit, slowing every normally executed prefix.
+    const auto scale_needed = [&](UniformBspline &curve) {
+      return requiredTimeScale(cubicDynamicBounds(curve), pp_.max_vel_,
+          pp_.max_vel_ + pp_.vel_tolerance_, pp_.max_acc_ + pp_.acc_tolerance_);
+    };
     bool flag_step_2_success = true;
-    if (!pos.checkFeasibility(ratio, false))
+    double ratio = scale_needed(pos);
+    for (int repair = 0; ratio > 1.0 + 1e-6 && repair < 4; ++repair)
     {
-      cout << "Need to reallocate time." << endl;
-
-      Eigen::MatrixXd optimal_control_points;
-      flag_step_2_success = refineTrajAlgo(pos, start_end_derivatives, ratio, ts, optimal_control_points);
-      if (flag_step_2_success)
-        pos = UniformBspline(optimal_control_points, 3, ts);
+      if (!std::isfinite(ratio) || ratio > 3.0)
+      {
+        flag_step_2_success = false;
+        break;
+      }
+      Eigen::MatrixXd repaired;
+      // Retain exact boundary states during a required slowdown. The small
+      // margin covers the refit; a fully feasible curve needs no slowdown.
+      flag_step_2_success = refineTrajAlgo(pos, start_end_derivatives,
+                                          ratio * 1.015, ts, repaired);
+      if (!flag_step_2_success)
+        break;
+      pos = UniformBspline(repaired, 3, ts);
+      ratio = scale_needed(pos);
     }
-
-    if (!flag_step_2_success)
+    if (!flag_step_2_success || !checkDynamicFeasibility(pos))
     {
-      printf("\033[34mThis refined trajectory is unsafe or dynamically infeasible. Skip publishing it.\n\033[0m");
+      ROS_WARN_THROTTLE(1.0, "Refined trajectory remains unsafe or dynamically infeasible after bounded timing repair.");
       continuous_failures_count_++;
       return false;
     }
 
     t_refine = ros::Time::now() - t_start;
 
-    UniformBspline timed = pos;
-    if (retimeForCruise(timed) &&
-        (timed.getTimeSum() < pos.getTimeSum() || !checkDynamicFeasibility(pos)) &&
-        checkDynamicFeasibility(timed) && accept_candidate(timed))
-      pos = timed;
-    else if (!checkDynamicFeasibility(pos) || !accept_candidate(pos))
+    // A uniform cruise speed-up changes the inherited initial derivatives.
+    // Keep the feasible trajectory's boundary states; the prefix retimer
+    // below is the single speed-up path and pins the same endpoint jets.
+    if (!accept_candidate(pos))
     {
       ++continuous_failures_count_;
       return false;
     }
 
-    // save planned results
-    updateTrajInfo(pos, ros::Time::now());
+    if (prefix_cruise_speed > 0.0)
+    {
+      UniformBspline retimed = pos;
+      if (retimeCruisePrefix(retimed, replan_distance, prefix_cruise_speed) &&
+          checkDynamicFeasibility(retimed) && accept_retimed(retimed) && accept_candidate(retimed))
+      {
+        ROS_INFO("Accepted experimental cruise prefix retime.");
+        pos = retimed;
+      }
+    }
+    result = pos;
 
     cout << "total time:\033[42m" << (t_init + t_opt + t_refine).toSec() << "\033[0m,optimize:" << (t_init + t_opt).toSec() << ",refine:" << t_refine.toSec() << endl;
 
-    // success. YoY
-    continuous_failures_count_ = 0;
     return true;
+  }
+
+  void SCANPlannerManager::commitCandidate(const UniformBspline &candidate)
+  {
+    updateTrajInfo(candidate, ros::Time::now());
+    continuous_failures_count_ = 0;
   }
 
   bool SCANPlannerManager::EmergencyStop(Eigen::Vector3d stop_pos)
@@ -413,6 +467,9 @@ namespace scan_upstream_planner
     else
       return false;
 
+    if (gl_traj.getTimes().empty())
+      return false;
+
     auto time_now = ros::Time::now();
     global_data_.setGlobalTraj(gl_traj, time_now);
 
@@ -477,6 +534,9 @@ namespace scan_upstream_planner
     else
       return false;
 
+    if (gl_traj.getTimes().empty())
+      return false;
+
     auto time_now = ros::Time::now();
     global_data_.setGlobalTraj(gl_traj, time_now);
 
@@ -515,64 +575,184 @@ namespace scan_upstream_planner
     local_data_.traj_id_ += 1;
   }
 
-  bool SCANPlannerManager::retimeForCruise(UniformBspline &position_traj)
+  bool SCANPlannerManager::retimeCruisePrefix(UniformBspline &curve, double distance,
+                                             double horizontal_target) const
   {
-    const double duration = position_traj.getTimeSum();
-    if (duration <= 0.0 || pp_.max_vel_ <= 0.0)
+    const double duration = curve.getTimeSum();
+    if (!std::isfinite(horizontal_target) || distance <= 0.0 || duration <= 0.1 ||
+        pp_.max_acc_ <= 0.0 || pp_.max_vel_ <= 0.0 || duration > 20.0)
       return false;
 
-    constexpr double requested_factor = 1.18;
-
-    // Derivative control points bound the entire spline by their convex hull.
-    UniformBspline velocity = position_traj.getDerivative();
-    const Eigen::MatrixXd v = velocity.getControlPoint();
-    const Eigen::MatrixXd a = velocity.getDerivative().getControlPoint();
-    const double horizontal_bound = v.topRows(2).colwise().norm().maxCoeff();
-    const double velocity_bound = v.colwise().norm().maxCoeff();
-    const double acceleration_bound = a.colwise().norm().maxCoeff();
-    const double factor = std::min({
-        requested_factor,
-        pp_.max_vel_ / std::max(1e-6, horizontal_bound),
-        (pp_.max_vel_ + pp_.vel_tolerance_) / std::max(1e-6, velocity_bound),
-        std::sqrt((pp_.max_acc_ + pp_.acc_tolerance_) / std::max(1e-6, acceleration_bound))});
-    if (!std::isfinite(factor) || factor <= 0.0 || std::abs(factor - 1.0) < 1e-6)
+    struct Sample
+    {
+      Eigen::Vector3d position;
+      double time, arc, speed, original_speed;
+    };
+    UniformBspline velocity = curve.getDerivative();
+    UniformBspline acceleration = velocity.getDerivative();
+    const Eigen::Vector3d start = curve.evaluateDeBoorT(0.0);
+    const int count = static_cast<int>(std::ceil(duration / 0.04));
+    std::vector<Sample> profile;
+    profile.reserve(count + 1);
+    size_t handoff = 0, end = 0;
+    for (int i = 0; i <= count; ++i)
+    {
+      const double t = duration * i / count;
+      const Eigen::Vector3d p = curve.evaluateDeBoorT(t);
+      if (!profile.empty() && (p - profile.back().position).norm() < 1e-5)
+        continue;
+      const double arc = profile.empty() ? 0.0 : profile.back().arc + (p - profile.back().position).norm();
+      const Eigen::Vector3d v = velocity.evaluateDeBoorT(t);
+      const double speed = v.norm();
+      profile.push_back({p, t, arc, speed, speed});
+      if (!handoff && (p - start).norm() >= distance)
+        handoff = profile.size() - 1;
+      if (handoff && arc >= profile[handoff].arc + 0.50)
+      {
+        end = profile.size() - 1;
+        break;
+      }
+    }
+    if (!end)
       return false;
 
-    // Scale every knot equally to preserve the checked spatial curve.
-    const Eigen::VectorXd knots = position_traj.getKnot();
-    position_traj.setKnot(knots / factor);
-    return true;
+    // Leave room for curvature and the acceleration introduced by fitting.
+    const double tangential_limit = 0.55 * pp_.max_acc_;
+    for (size_t i = 1; i < end; ++i)
+    {
+      auto &sample = profile[i];
+      const Eigen::Vector3d v = velocity.evaluateDeBoorT(sample.time);
+      const double speed = sample.original_speed;
+      if (speed < 1e-3 || v.head<2>().norm() < 1e-3)
+        continue;
+      const Eigen::Vector3d tangent = v / speed;
+      if (tangent.dot(sample.position - start) <= 0.0)
+        continue;
+      const Eigen::Vector3d acc = acceleration.evaluateDeBoorT(sample.time);
+      const double curvature = (acc - tangent * tangent.dot(acc)).norm() / (speed * speed);
+      const double horizontal_fraction = tangent.head<2>().norm();
+      const double cap = std::min(pp_.max_vel_,
+          std::sqrt(0.60 * pp_.max_acc_ / std::max(1e-6, curvature)));
+      const double ramp = std::clamp(std::min(sample.arc / 0.22,
+          (profile[end].arc - sample.arc) / (profile[end].arc - profile[handoff].arc)), 0.0, 1.0);
+      const double weight = ramp * ramp * (3.0 - 2.0 * ramp);
+      const double requested = std::min(cap, horizontal_target / horizontal_fraction);
+      sample.speed = speed + weight * std::max(0.0, requested - speed);
+    }
+    const auto limited = [&](double v, double ds) {
+      return std::sqrt(v * v + 2.0 * tangential_limit * ds);
+    };
+    for (size_t i = 1; i < end; ++i)
+      profile[i].speed = std::min(profile[i].speed,
+          limited(profile[i - 1].speed, profile[i].arc - profile[i - 1].arc));
+    for (size_t i = end - 1; i > 0; --i)
+      profile[i].speed = std::min(profile[i].speed,
+          limited(profile[i + 1].speed, profile[i + 1].arc - profile[i].arc));
+
+    std::vector<double> time(end + 1, 0.0);
+    for (size_t i = 1; i <= end; ++i)
+    {
+      const double sum = profile[i - 1].speed + profile[i].speed;
+      if (sum <= 1e-4)
+        return false;
+      time[i] = time[i - 1] + 2.0 * (profile[i].arc - profile[i - 1].arc) / sum;
+    }
+    const double time_saved = profile[end].time - time.back();
+    if (time_saved <= 0.01 || time[handoff] >= profile[handoff].time - 0.01)
+      return false;
+    const double new_duration = duration - time_saved;
+    const int spans = std::max(6, static_cast<int>(std::ceil(new_duration / 0.065)));
+    const double dt = new_duration / spans;
+    std::vector<Eigen::Vector3d> points;
+    points.reserve(spans + 1);
+    size_t segment = 1;
+    for (int i = 0; i <= spans; ++i)
+    {
+      const double t = dt * i;
+      double original = std::min(duration, t + time_saved);
+      if (t < time.back())
+      {
+        while (time[segment] < t)
+          ++segment;
+        const double u = (t - time[segment - 1]) / (time[segment] - time[segment - 1]);
+        original = (1.0 - u) * profile[segment - 1].time + u * profile[segment].time;
+      }
+      points.push_back(curve.evaluateDeBoorT(original));
+    }
+
+    const std::vector<Eigen::Vector3d> derivatives = {velocity.evaluateDeBoorT(0.0),
+        velocity.evaluateDeBoorT(duration), acceleration.evaluateDeBoorT(0.0),
+        acceleration.evaluateDeBoorT(duration)};
+    Eigen::MatrixXd control;
+    UniformBspline::parameterizeToBspline(dt, points, derivatives, control);
+    // The fitter uses least squares. Pin the three endpoint controls to
+    // reproduce the old position, velocity and acceleration exactly.
+    for (int end_index = 0; end_index <= 1; ++end_index)
+    {
+      const int center = end_index ? control.cols() - 2 : 1;
+      const Eigen::Vector3d curvature = derivatives[2 + end_index] * dt * dt;
+      const Eigen::Vector3d tangent = derivatives[end_index] * dt;
+      control.col(center) = (end_index ? points.back() : points.front()) - curvature / 6.0;
+      control.col(center - 1) = control.col(center) - tangent + curvature / 2.0;
+      control.col(center + 1) = control.col(center) + tangent + curvature / 2.0;
+    }
+    UniformBspline candidate(control, 3, dt);
+    UniformBspline candidate_v = candidate.getDerivative();
+    UniformBspline candidate_a = candidate_v.getDerivative();
+    double first_handoff = -1.0;
+    const int checks = static_cast<int>(std::ceil(new_duration / 0.01));
+    for (int i = 0; i <= checks; ++i)
+    {
+      const double t = new_duration * i / checks;
+      const Eigen::Vector3d v = candidate_v.evaluateDeBoorT(t);
+      const Eigen::Vector3d a = candidate_a.evaluateDeBoorT(t);
+      double velocity_limit = pp_.max_vel_;
+      double acceleration_limit = pp_.max_acc_ + 1e-3;
+      // Preserve the original tail, including feasible values that already
+      // use the planner's tolerance. The updated prefix uses nominal limits.
+      if (t >= time.back())
+      {
+        const double old_time = t + time_saved;
+        velocity_limit = std::max(velocity_limit, velocity.evaluateDeBoorT(old_time).norm());
+        acceleration_limit = std::max(acceleration_limit,
+            acceleration.evaluateDeBoorT(old_time).norm() + 0.015);
+      }
+      if (!v.allFinite() || !a.allFinite() || v.head<2>().norm() > pp_.max_vel_ + 1e-3 ||
+          v.norm() > velocity_limit + 1e-3 || a.norm() > acceleration_limit)
+        return false;
+      if (first_handoff < 0.0 && (candidate.evaluateDeBoorT(t) - start).norm() >= distance)
+        first_handoff = t;
+    }
+    // Measure the original crossing at the same time resolution.
+    const int original_checks = static_cast<int>(std::ceil(duration / 0.01));
+    for (int i = 1; i <= original_checks; ++i)
+    {
+      const double t = duration * i / original_checks;
+      if ((curve.evaluateDeBoorT(t) - start).norm() >= distance)
+      {
+        if (first_handoff < 0.0 || t - first_handoff <= 0.02)
+          return false;
+        ROS_INFO("Cruise prefix retime: %.2f m crossing %.3f -> %.3f s", distance, t, first_handoff);
+        curve = candidate;
+        return true;
+      }
+    }
+    return false;
   }
 
   bool SCANPlannerManager::checkDynamicFeasibility(UniformBspline position_traj)
   {
-    UniformBspline vel_traj = position_traj.getDerivative();
-    UniformBspline acc_traj = vel_traj.getDerivative();
-    const double duration = position_traj.getTimeSum();
-    const double sample_dt = std::max(0.01, std::min(0.05, duration / 50.0));
-    const double vel_limit = pp_.max_vel_ + pp_.vel_tolerance_;
-    const double acc_limit = pp_.max_acc_ + pp_.acc_tolerance_;
-
-    for (double t = 0.0; t < duration + 1e-6; t += sample_dt)
+    const auto bounds = cubicDynamicBounds(position_traj);
+    const double ratio = requiredTimeScale(bounds, pp_.max_vel_,
+        pp_.max_vel_ + pp_.vel_tolerance_, pp_.max_acc_ + pp_.acc_tolerance_);
+    if (!std::isfinite(ratio) || ratio > 1.0 + 1e-6)
     {
-      const double tc = std::min(t, duration);
-      Eigen::Vector3d vel = vel_traj.evaluateDeBoorT(tc);
-      if (vel.norm() > vel_limit)
-      {
-        ROS_WARN_STREAM("Dynamic feasibility check failed: velocity limit exceeded at t="
-                        << tc << ", |v|=" << vel.norm() << " > " << vel_limit);
-        return false;
-      }
-
-      Eigen::Vector3d acc = acc_traj.evaluateDeBoorT(tc);
-      if (acc.norm() > acc_limit)
-      {
-        ROS_WARN_STREAM("Dynamic feasibility check failed: acceleration limit exceeded at t="
-                        << tc << ", |a|=" << acc.norm() << " > " << acc_limit);
-        return false;
-      }
+      ROS_WARN_STREAM_THROTTLE(1.0, "Dynamic bounds rejected: horizontal=" << bounds.horizontal_velocity
+          << "/" << pp_.max_vel_ << ", velocity=" << bounds.velocity << "/"
+          << pp_.max_vel_ + pp_.vel_tolerance_ << ", acceleration=" << bounds.acceleration
+          << "/" << pp_.max_acc_ + pp_.acc_tolerance_);
+      return false;
     }
-
     return true;
   }
 
@@ -584,7 +764,10 @@ namespace scan_upstream_planner
     // double length = bspline.getLength(0.1);
     // int seg_num = ceil(length / pp_.ctrl_pt_dist);
 
-    bspline.lengthenTime(ratio);
+    // Uniform scaling preserves the original spatial curve, including short
+    // splines with too few knots for lengthenTime's fixed interior indices.
+    const Eigen::VectorXd knots = bspline.getKnot();
+    bspline.setKnot(knots * ratio);
     double duration = bspline.getTimeSum();
     dt = duration / double(seg_num);
     time_inc = duration - time_origin;

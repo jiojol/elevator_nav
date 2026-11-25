@@ -16,13 +16,15 @@
   <arg name="manual_start" value="$(eval arg('planning_only') and not arg('planning_live_pose'))"/>
   <arg name="use_calibrated_mount" default="false"/>
   <arg name="start_rviz" default="true"/>
+  <arg name="mark_elevator" default="false"/>
   <arg name="rviz_config" default="$(find dog_nav_bringup)/config/navigation_free.rviz"/>
-  <arg name="scan_max_vel" default="$(eval 0.75 if arg('map_set') == 'test11' else 0.20)"/>
+  <arg name="scan_max_vel" default="0.75"/>
+  <arg name="scan_prefix_cruise_speed" default="$(eval min(0.80, float(arg('scan_max_vel'))))"/>
   <arg name="elevator_speed_limit" default="0.20"/>
   <arg name="elevator_ingress_speed_limit" default="$(arg scan_max_vel)"/>
-  <arg name="scan_max_acc" default="0.50"/>
-  <arg name="scan_max_lateral" default="$(eval 0.35 if arg('map_set') == 'test11' else 0.10)"/>
-  <arg name="scan_max_yaw" default="$(eval 1.00 if arg('map_set') == 'test11' else 0.30)"/>
+  <arg name="scan_max_acc" default="0.60"/>
+  <arg name="scan_max_lateral" default="0.35"/>
+  <arg name="scan_max_yaw" default="1.00"/>
   <arg name="scan_body_height" default="0.40"/>
   <arg name="scan_path_z_offset" default="0.0"/>
   <arg name="map_config_suffix" value="$(eval '_test11' if arg('plan_meta').endswith('/test11_plan.json') else '_yuki' if arg('plan_meta').endswith('system/map/yuki/dog_plan.json') else '')"/>
@@ -37,8 +39,10 @@
               /dog_nav/sensor_pose /navigation/obstacle_points /initialpose /move_base_simple/goal
               /elevator_nav/status /elevator_nav/result /elevator_nav/cabin_aligned /elevator/door_open /elevator/door_status
               /plan_map/segment_goal /plan_map/global_path /initial_path /map_manager/status /map_manager/result
+              /map_manager/cancel /plan_map/cancel_scan /planning/reference_refresh
               /planning/bspline /planning/go2_execution_frozen /planning/go2_execution_progress
-              /planning/scan_upstream_cmd_vel /planning/upstream_adapter_status /planning/goal_reached
+              /planning/body_odometry /planning/scan_upstream_cmd_vel /planning/scan_upstream_stamped_cmd_vel
+              /planning/upstream_adapter_status /planning/goal_reached
               /cmd_vel /go2/odom /go2_ros_bridge/control_status'/>
 
   <node pkg="lio" type="lio" name="lio" output="screen" required="true"
@@ -47,6 +51,7 @@
     <param name="save_mapping_cloud" value="$(arg lio_save_mapping_cloud)" type="bool"/>
     <param name="navigation_lidar_backlog_s" value="0.15" type="double"/>
     <param name="navigation_elevator_stop_check" value="$(eval arg('map_set') == 'test11')" type="bool"/>
+    <param name="navigation_continue_stop_zupt" value="true" type="bool"/>
   </node>
 
   <node pkg="dog_nav_bringup" type="unitree_nav_bridge" name="go2_ros_bridge"
@@ -59,6 +64,7 @@
 
   <include file="$(find dog_nav_bringup)/launch/elevator_lio_localization.launch">
     <arg name="globalmap_pcd" value="$(arg globalmap_pcd)"/>
+    <arg name="elevator_config" value="$(arg elevator_config)"/>
     <arg name="start_lidar" value="$(eval arg('start_lidar') and not arg('manual_start'))"/>
     <arg name="map_only" value="$(arg manual_start)"/>
     <arg name="use_calibrated_mount" value="$(arg use_calibrated_mount)"/>
@@ -66,7 +72,9 @@
 
   <include file="$(find dog_nav_bringup)/launch/scan_upstream.launch"
            unless="$(arg planning_only)">
+    <arg name="plan_meta" value="$(arg plan_meta)"/>
     <arg name="max_vel" value="$(arg scan_max_vel)"/>
+    <arg name="prefix_cruise_speed" value="$(arg scan_prefix_cruise_speed)"/>
     <arg name="elevator_config" value="$(arg elevator_config)"/>
     <arg name="elevator_speed_limit" value="$(arg elevator_speed_limit)"/>
     <arg name="elevator_ingress_speed_limit" value="$(arg elevator_ingress_speed_limit)"/>
@@ -109,5 +117,6 @@
 
   <include file="$(find dog_nav_bringup)/launch/visualization.launch" if="$(arg start_rviz)">
     <arg name="rviz_config" value="$(arg rviz_config)"/>
+    <arg name="mark_elevator" value="$(arg mark_elevator)"/>
   </include>
 </launch>

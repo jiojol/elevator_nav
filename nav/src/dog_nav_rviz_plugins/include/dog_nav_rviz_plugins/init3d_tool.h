@@ -24,7 +24,7 @@ public:
   void onInitialize() override;
 
 protected:
-  void onPoseSet(double x, double y, double z, double yaw) override;
+  bool onPoseSet(double x, double y, double z, double yaw, rviz::ViewportMouseEvent&) override;
 
 private Q_SLOTS:
   void updateTopic();

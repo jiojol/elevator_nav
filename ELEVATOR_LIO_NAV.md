@@ -4,6 +4,8 @@ This branch adds a door-aware, single-elevator navigation flow to the existing
 ROS 1 FREE/SCAN stack. The implementation keeps the final goal out of the
 ordinary global A* unless the start and goal are on the same floor.
 
+> **实测状态（2026-11-25）**：室外定位勉强可用，实机避障尚未测试。
+
 ## Source checkout
 
 The navigation workspace uses ROS 1 Noetic. Build its local navigation and
@@ -43,7 +45,7 @@ Livox MID-360
 During `in_elevator=true`, map registration corrections are frozen while
 Elevator-LIO odometry continues to be published. The test11 navigation launch additionally checks the elevator's acceleration,
 braking and stationary period using a separately bias-corrected IMU estimate.
-One bounded vertical step (up to 1.0 m)
+One bounded vertical step (up to 2.5 m in either direction)
 consistent with the Elevator-LIO exit ZUPT is allowed during the ride without
 using that frame as a velocity sample. On the next normal-mode message, the
 localizer reacquires a submap and waits for two consecutive scan matches to
@@ -51,6 +53,14 @@ agree before reporting `TRACKING` again. Post-elevator reacquisition can
 correct up to 3.0 m. Normal tracking uses the 0.35 m limit.
 
 ## FREE map generation
+
+For an indoor/outdoor run that returns to its start before the first elevator
+ride, add `loop_closure:=true` to `start_elevator_lio_map.sh`. After recording
+finishes, this checks the start-area overlap in three separate LiDAR windows.
+An accepted match produces a sibling `_loop` map directory with a corrected
+point cloud, trajectory and FREE map. The correction is held constant during
+the ride, preserving its measured height change. The original map and bag
+are retained if the loop can't be verified.
 
 Use the segmented builder when a mode log is available:
 
@@ -157,8 +167,10 @@ Use the 3D Pose Estimate tool and wait for `TRACKING` before sending a goal.
 For an existing component, use `start_lidar:=false`, `start_lio:=false`
 or `start_bridge:=false` as applicable.
 
-The local planner, closed-loop controller and ROS I/O adapter are a local
-copy of the default upstream SCAN backend from `/home/unitree/replan_in_global_map`.
+The local planner and closed-loop controller are built from a local copy of
+the default SCAN backend from `/home/unitree/replan_in_global_map` (working
+tree at `fd3e103`). The elevator integration retains the ingress direction
+check and the door, turn, braking and exit handoff in its own adapter.
 The copied source and upstream revision record are under `scan_upstream/`.
 To rebuild that workspace with ROS Noetic:
 
@@ -239,12 +251,14 @@ recorded environment:
 bash system/scripts/start_elevator_nav.sh map_set:=test11 planning_only:=false
 ```
 
-The test11 corridor limits match the source SCAN launch: 0.75 m/s forward,
+The elevator project uses a 0.75 m/s corridor limit for the site profiles,
 0.35 m/s lateral and 1.00 rad/s yaw. Within 1.60 m of a same-floor cabin the
 adapter caps planar speed, lateral speed and yaw rate at 0.20 m/s, 0.10 m/s
 and 0.30 rad/s respectively. An authorized ingress route uses the configured
 corridor forward speed as its planar cap (0.75 m/s for test11), with the same
-near-door lateral and yaw limits. Within 0.45 m of the marked lobby, with
+near-door lateral and yaw limits. On floor2 the final 0.85 m of ingress ramps
+down to a 0.15 m/s cap. The body stops near the marked cabin pose after its
+turning footprint clears the door plane. Within 0.45 m of the marked lobby, with
 fresh tracking, cloud and an active SCAN trajectory, the robot stops translating
 and turns to the published lobby yaw. Test11 uses 0.45–0.55 rad/s for this
 stationary turn, within the configured chassis yaw limit. It acknowledges
@@ -297,7 +311,7 @@ Local test assets are under:
 The test uses `test11` Elevator-LIO output and the derived segmented map:
 
 - Lower-floor elevator candidate: `[4.728, -5.709, -0.40]`
-- Upper-floor elevator candidate: `[4.533, -5.478, 6.85]`
+- Upper-floor cabin stop: `[4.690, -5.478, 6.85]`
 - Upper-floor test goal: approximately `[8.877, -4.334, 6.85]`
 
 Results:

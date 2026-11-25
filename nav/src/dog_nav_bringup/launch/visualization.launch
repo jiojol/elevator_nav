@@ -1,5 +1,8 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="rviz_config" default="$(find dog_nav_bringup)/config/navigation_tum.rviz"/>
-  <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config)"/>
+  <arg name="mark_elevator" default="false"/>
+  <node pkg="rviz" type="rviz" name="rviz" args="-d $(arg rviz_config)">
+    <remap if="$(arg mark_elevator)" from="/move_base_simple/goal" to="/elevator_mark/pose"/>
+  </node>
 </launch>

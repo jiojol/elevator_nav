@@ -43,6 +43,9 @@ LidarPipeline::LidarPipeline(lio_ros::Node& nh,
     bool independent_stop = false;
     nh.param("navigation_elevator_stop_check", independent_stop, false);
     elevator_self_exit_.enableNavigationStopCheck(independent_stop);
+    bool continue_stop_zupt = false;
+    nh.param("navigation_continue_stop_zupt", continue_stop_zupt, false);
+    elevator_self_exit_.enableNavigationZuptContinuation(continue_stop_zupt);
     ele_state_pub_ = nh.advertise<lio_ros::Bool>("/LIO/in_elevator", 1, true);
     elevator_estimate_pub_ = nh.advertise<lio_ros::ElevatorState>("/LIO/elevator_state", 1, true);
 }

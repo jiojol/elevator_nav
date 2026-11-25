@@ -11,6 +11,7 @@
 #include <random>
 #include <nav_msgs/Odometry.h>
 #include <queue>
+#include <optional>
 #include <ros/ros.h>
 #include <tuple>
 #include <visualization_msgs/Marker.h>
@@ -110,6 +111,8 @@ struct MappingData {
   Eigen::Vector3d ray_pos_;
   Eigen::Quaterniond ray_q_;
   Eigen::Vector3d sliding_map_frame_pos_;
+  Eigen::Vector3d body_normal_ = Eigen::Vector3d::UnitZ();
+  ros::Time body_pose_stamp_;
 
   // depth image data
 
@@ -156,6 +159,8 @@ public:
   // occupancy map management
   void resetBuffer();
   void resetBuffer(Eigen::Vector3d min, Eigen::Vector3d max);
+  ros::Time cloudStamp() const { return cloud_stamp_; }
+  std::optional<double> alignmentEpoch() const { return alignment_epoch_; }
 
   inline void posToIndex(const Eigen::Vector3d& pos, Eigen::Vector3i& id);
   inline void indexToPos(const Eigen::Vector3i& id, Eigen::Vector3d& pos);
@@ -248,6 +253,9 @@ private:
   typedef shared_ptr<message_filters::Synchronizer<SyncPolicyImagePose>> SynchronizerImagePose;
 
   ros::NodeHandle node_;
+  ros::Time pending_cloud_stamp_, cloud_stamp_;
+  std::optional<double> alignment_epoch_, pending_alignment_epoch_;
+  Eigen::Vector3d pending_cloud_origin_;
   shared_ptr<tf::TransformBroadcaster> tf_broadcaster_;
   shared_ptr<message_filters::Subscriber<sensor_msgs::Image>> depth_sub_;
   shared_ptr<message_filters::Subscriber<nav_msgs::Odometry>> depth_pose_sub_;
@@ -364,6 +372,19 @@ inline int GridMap::getOccupancy(Eigen::Vector3d pos) {
 
 inline int GridMap::getInflateOccupancy(Eigen::Vector3d pos, double yaw) {
   Eigen::Vector3d heading(std::cos(yaw), std::sin(yaw), 0.0);
+  // At the measured footprint use the calibrated body attitude. Flattening
+  // a pitched Go2 puts its front/rear probes on stair risers instead of the
+  // physical longitudinal axis. The local body plane also handles a changed
+  // candidate yaw without confusing the lidar's attitude with the chassis.
+  const double age = (ros::Time::now() - md_.body_pose_stamp_).toSec();
+  const double body_extent = mp_.double_cylinder_offset_ + mp_.double_cylinder_radius_;
+  if (!md_.body_pose_stamp_.isZero() && age >= -0.05 && age <= 0.30 &&
+      (pos - md_.sliding_map_frame_pos_).head<2>().norm() <= body_extent &&
+      md_.body_normal_.z() > 0.3)
+  {
+    heading.z() = -md_.body_normal_.head<2>().dot(heading.head<2>()) / md_.body_normal_.z();
+    heading.normalize();
+  }
   Eigen::Vector3d front = pos + mp_.double_cylinder_offset_ * heading;
   Eigen::Vector3d rear = pos - mp_.double_cylinder_offset_ * heading;
 
